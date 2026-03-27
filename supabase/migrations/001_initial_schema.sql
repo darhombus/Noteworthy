@@ -302,9 +302,19 @@ RETURNS INT LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
   raw_text TEXT;
 BEGIN
-  SELECT string_agg(val, ' ')
+  -- Use strict mode + silent=true so structural errors on non-objects are
+  -- suppressed without triggering lax mode's array auto-unwrapping.
+  -- The filter ? (@.type == "text") targets only Tiptap text nodes, so each
+  -- text node is visited exactly once (no doubling from array + element).
+  -- val #>> '{}' extracts the bare string value without JSON quotes.
+  SELECT string_agg(val #>> '{}', ' ')
   INTO raw_text
-  FROM jsonb_path_query(content, 'strict $.**.text') AS val;
+  FROM jsonb_path_query(
+    content,
+    'strict $.** ? (@.type == "text").text',
+    '{}',
+    true
+  ) AS val;
 
   IF raw_text IS NULL OR raw_text = '' THEN
     RETURN 0;
@@ -312,7 +322,7 @@ BEGIN
 
   RETURN array_length(
     array_remove(
-      regexp_split_to_array(trim(raw_text::text), '\s+'),
+      regexp_split_to_array(trim(raw_text), '\s+'),
       ''
     ),
     1
