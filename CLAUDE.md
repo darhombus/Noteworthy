@@ -9,7 +9,7 @@ Framework   : Next.js 14 App Router
 Language    : TypeScript strict mode — never use 'any'
 Styling     : Tailwind CSS v3, darkMode: 'class'
 Database    : Supabase (Postgres + Auth + Storage)
-Editor      : BlockNote (@blocknote/react) — MPL-2.0, free
+Editor      : Tiptap (@tiptap/react) — MIT, free
 State       : Zustand (UI only), Server Components (data)
 Forms       : React Hook Form + Zod (schema first, type inferred)
 Charts      : Chart.js + react-chartjs-2
@@ -26,7 +26,7 @@ CODING RULES (non-negotiable)
 6.  Optimistic UI: update local state immediately, revert + toast on server error.
 7.  Forms: define Zod schema → infer type → pass to zodResolver. Always.
 8.  RLS is the security layer — never rely on user_id filters in app code alone.
-9.  BlockNote content stored as JSONB. Never raw HTML. Use BlockNote renderer for previews.
+9.  Tiptap content stored as JSONB (JSONContent). Never raw HTML. Use Tiptap read-only editor for previews.
 10. Concurrency: send updated_at as If-Unmodified-Since on every save.
     On 409 Conflict → show conflict dialog (Keep mine / Load server version).
 

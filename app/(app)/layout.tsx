@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, avatar_url')
-    .eq('id', user.id)
+    .eq('user_id', user.id)
     .single()
 
   const sidebarUser = {
