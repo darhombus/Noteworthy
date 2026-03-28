@@ -36,18 +36,36 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/callback') ||
     pathname.startsWith('/api/auth')
 
-  // Redirect unauthenticated users to login
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
+  if (user) {
+    // If the user has an active Supabase session but the remember-me flag is absent,
+    // the browser was closed since their last login (session cookie expired).
+    // Sign them out so they are required to log in again.
+    const rememberMe = request.cookies.get('nw_remember_me')
+    if (!rememberMe) {
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      const redirectResponse = NextResponse.redirect(url)
+      // Transfer the set-cookie headers that clear the Supabase auth cookies
+      supabaseResponse.headers.getSetCookie().forEach((header) =>
+        redirectResponse.headers.append('set-cookie', header)
+      )
+      return redirectResponse
+    }
 
-  // Redirect authenticated users away from login/signup
-  if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    // Redirect authenticated users away from auth pages and landing page
+    if (pathname === '/' || pathname === '/login' || pathname === '/signup') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+  } else {
+    // Redirect unauthenticated users to login for protected routes
+    if (!isPublic) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse

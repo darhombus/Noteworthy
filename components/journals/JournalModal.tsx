@@ -1,44 +1,25 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  X,
-  Check,
-  Book,
-  Star,
-  Heart,
-  Briefcase,
-  Globe,
-  Music,
-  Camera,
-  Coffee,
-  type LucideProps,
-} from 'lucide-react'
+import { X, BookOpen, ChevronDown, Palette } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createJournal, updateJournal } from '@/lib/actions/journals'
 import {
   createJournalSchema,
-  JOURNAL_COLORS,
+  COLOR_DEFS,
   JOURNAL_ICONS,
+  getColorBg,
+  getColorLabel,
   type CreateJournalInput,
 } from '@/lib/validations/journals'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
-type IconName = (typeof JOURNAL_ICONS)[number]
-
-const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
-  book: Book,
-  star: Star,
-  heart: Heart,
-  briefcase: Briefcase,
-  globe: Globe,
-  music: Music,
-  camera: Camera,
-  coffee: Coffee,
-}
+type EmojiIcon = (typeof JOURNAL_ICONS)[number]
 
 interface JournalModalProps {
   journal?: Journal
@@ -48,7 +29,11 @@ interface JournalModalProps {
 
 export default function JournalModal({ journal, onClose, onSuccess }: JournalModalProps) {
   const router = useRouter()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const isEdit = !!journal
+
+  const [colorOpen, setColorOpen] = useState(false)
 
   const {
     register,
@@ -61,13 +46,23 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
     defaultValues: {
       title: journal?.title ?? '',
       description: journal?.description ?? '',
-      color: (journal?.color as (typeof JOURNAL_COLORS)[number]) ?? JOURNAL_COLORS[0],
-      icon: (journal?.icon as IconName) ?? 'book',
+      color: (COLOR_DEFS.some((d) => d.value === journal?.color)
+        ? journal!.color
+        : COLOR_DEFS[0].value) as CreateJournalInput['color'],
+      icon: (JOURNAL_ICONS.includes(journal?.icon as EmojiIcon)
+        ? journal!.icon
+        : JOURNAL_ICONS[0]) as EmojiIcon,
     },
   })
 
   const selectedColor = watch('color')
   const selectedIcon = watch('icon')
+  const titleValue = watch('title') ?? ''
+  const descValue = watch('description') ?? ''
+
+  const colorBg = getColorBg(selectedColor)
+  const colorLabel = getColorLabel(selectedColor)
+  const emojiBg = isDark ? `${selectedColor}25` : colorBg
 
   async function onSubmit(data: CreateJournalInput) {
     const result = isEdit
@@ -86,121 +81,251 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/45 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md border border-[#E5E7EB] dark:border-slate-700">
+      <div
+        className="bg-white dark:bg-[#1E1E1E] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif]"
+        style={{
+          boxShadow: isDark
+            ? '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)'
+            : '0 24px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)',
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB] dark:border-slate-700">
-          <h2 className="font-semibold text-gray-900 dark:text-white">
-            {isEdit ? 'Edit Journal' : 'New Journal'}
-          </h2>
+        <div className="flex items-center gap-3 px-6 pt-[22px] pb-[18px] border-b border-[#E0E0E0] dark:border-[#3A3A3A]">
+          <div
+            className="flex items-center justify-center w-9 h-9 rounded-[10px] shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #1976D2, #1565C0)',
+              boxShadow: '0 4px 10px rgba(25,118,210,0.3)',
+            }}
+          >
+            <BookOpen size={17} color="#fff" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2
+              className="text-base font-bold text-[#212121] dark:text-[#F5F5F5] leading-tight"
+              style={{ letterSpacing: '-0.3px' }}
+            >
+              {isEdit ? 'Edit Journal' : 'Create New Journal'}
+            </h2>
+            <p className="text-xs text-[#9E9E9E] dark:text-[#757575]">
+              A journal holds your entries &amp; notes
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] hover:bg-[#E0E0E0] dark:hover:bg-[#3A3A3A] transition-colors shrink-0"
             aria-label="Close"
           >
-            <X className="w-5 h-5 text-gray-500 dark:text-slate-400" />
+            <X size={14} className="text-[#757575] dark:text-[#9E9E9E]" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-4">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Title <span className="text-red-500">*</span>
-            </label>
-            <input
-              {...register('title')}
-              placeholder="My Journal"
-              className="w-full px-3 py-2 rounded-lg border border-[#E5E7EB] dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-gray-400 dark:placeholder-slate-500"
-            />
-            {errors.title && (
-              <p className="mt-1 text-xs text-red-500">{errors.title.message}</p>
-            )}
-          </div>
+        {/* Body */}
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="px-6 pt-[22px] pb-4 flex flex-col gap-[18px]">
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
-              Description
-            </label>
-            <textarea
-              {...register('description')}
-              rows={2}
-              placeholder="What is this journal about?"
-              className="w-full px-3 py-2 rounded-lg border border-[#E5E7EB] dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] resize-none placeholder-gray-400 dark:placeholder-slate-500"
-            />
-            {errors.description && (
-              <p className="mt-1 text-xs text-red-500">{errors.description.message}</p>
-            )}
-          </div>
+            {/* Row 1: Icon picker + Color picker */}
+            <div className="flex gap-3">
+              {/* Icon picker */}
+              <div className="shrink-0">
+                <p className="text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-2" style={{ letterSpacing: '0.5px' }}>
+                  Icon
+                </p>
+                <div className="flex flex-wrap gap-1.5" style={{ maxWidth: 184 }}>
+                  {JOURNAL_ICONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setValue('icon', emoji)}
+                      className="flex items-center justify-center w-9 h-9 rounded-lg text-lg transition-colors"
+                      style={{
+                        border: selectedIcon === emoji
+                          ? `2px solid ${selectedColor}`
+                          : `1px solid ${isDark ? '#3A3A3A' : '#E0E0E0'}`,
+                        background: selectedIcon === emoji
+                          ? emojiBg
+                          : isDark ? '#333333' : '#EEEEEE',
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Colour picker */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
-              Colour
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {JOURNAL_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setValue('color', color)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--brand)]"
-                  style={{ backgroundColor: color }}
-                  aria-label={color}
-                >
-                  {selectedColor === color && <Check className="w-4 h-4 text-white" strokeWidth={3} />}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Icon picker */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
-              Icon
-            </label>
-            <div className="grid grid-cols-8 gap-2">
-              {JOURNAL_ICONS.map((iconName) => {
-                const IconComp = ICON_MAP[iconName]
-                return (
+              {/* Color picker */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-2 flex items-center gap-1" style={{ letterSpacing: '0.5px' }}>
+                  <Palette size={11} />
+                  Cover Color
+                </p>
+                <div className="relative">
+                  {/* Trigger */}
                   <button
-                    key={iconName}
                     type="button"
-                    onClick={() => setValue('icon', iconName)}
-                    className={`p-2 rounded-lg flex items-center justify-center transition-colors focus:outline-none ${
-                      selectedIcon === iconName
-                        ? 'bg-[var(--brand)] text-white'
-                        : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                    }`}
-                    aria-label={iconName}
+                    onClick={() => setColorOpen((prev) => !prev)}
+                    className="w-full flex items-center gap-2 px-3 py-[9px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] hover:bg-[#E5E5E5] dark:hover:bg-[#404040] transition-colors"
                   >
-                    <IconComp className="w-4 h-4" />
+                    <span
+                      className="inline-block w-[18px] h-[18px] rounded-full shrink-0"
+                      style={{ background: selectedColor }}
+                    />
+                    <span className="flex-1 text-left text-[#212121] dark:text-[#F5F5F5] text-[13px]">
+                      {colorLabel}
+                    </span>
+                    <ChevronDown
+                      size={13}
+                      className={`text-[#9E9E9E] transition-transform duration-200 ${colorOpen ? 'rotate-180' : ''}`}
+                    />
                   </button>
-                )
-              })}
+
+                  {/* Dropdown */}
+                  {colorOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 p-2 rounded-[10px] bg-white dark:bg-[#2C2C2C] border border-[#E0E0E0] dark:border-[#3A3A3A] z-10 shadow-lg">
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {COLOR_DEFS.map((c) => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => {
+                              setValue('color', c.value as CreateJournalInput['color'])
+                              setColorOpen(false)
+                            }}
+                            className="flex flex-col items-center gap-1 p-1.5 rounded-lg hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A] transition-colors"
+                          >
+                            <span
+                              className="inline-block w-[22px] h-[22px] rounded-full"
+                              style={{ background: c.value }}
+                            />
+                            <span className="text-[9px] text-[#9E9E9E] dark:text-[#757575]">
+                              {c.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Preview card */}
+            <div
+              className="flex items-center gap-4 p-4 rounded-xl border border-[#E0E0E0] dark:border-[#3A3A3A]"
+              style={{ background: isDark ? '#2A2A2A' : '#F8F9FA' }}
+            >
+              {/* Book thumbnail */}
+              <div
+                className="relative flex items-center justify-center w-[52px] h-16 rounded-lg shrink-0 text-[22px]"
+                style={{
+                  background: `linear-gradient(160deg, ${selectedColor}CC, ${selectedColor})`,
+                  boxShadow: `0 4px 12px ${selectedColor}55`,
+                }}
+              >
+                <div
+                  className="absolute left-0 top-0 bottom-0 w-[5px] rounded-l-lg opacity-30"
+                  style={{ background: '#000' }}
+                />
+                <span>{selectedIcon}</span>
+              </div>
+
+              {/* Meta */}
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-[14px] font-semibold leading-tight truncate"
+                  style={{ color: titleValue ? (isDark ? '#F5F5F5' : '#212121') : '#9E9E9E' }}
+                >
+                  {titleValue || 'Journal Name'}
+                </p>
+                {descValue && (
+                  <p className="text-[11px] text-[#9E9E9E] truncate mt-0.5">{descValue}</p>
+                )}
+                <span
+                  className="inline-block mt-2 px-[10px] py-0.5 rounded-full text-[10px] font-semibold"
+                  style={{ color: selectedColor, background: emojiBg }}
+                >
+                  0 entries
+                </span>
+              </div>
+            </div>
+
+            {/* Journal name */}
+            <div>
+              <label
+                className="block text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-1.5"
+                style={{ letterSpacing: '0.5px' }}
+              >
+                Journal Name <span className="text-red-500 normal-case font-normal">*</span>
+              </label>
+              <input
+                {...register('title')}
+                placeholder="e.g. Personal Journal, Work Notes…"
+                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] text-[14px] text-[#212121] dark:text-[#F5F5F5] placeholder-[#9E9E9E] focus:outline-none transition-colors"
+                style={{
+                  border: titleValue
+                    ? `1px solid ${selectedColor}`
+                    : `1px solid ${isDark ? '#3A3A3A' : '#E0E0E0'}`,
+                }}
+              />
+              {errors.title && (
+                <p className="mt-1 text-xs text-red-500">{errors.title.message}</p>
+              )}
+            </div>
+
+            {/* Description */}
+            <div>
+              <label
+                className="block text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-1.5"
+                style={{ letterSpacing: '0.5px' }}
+              >
+                Description{' '}
+                <span className="font-normal normal-case text-[#9E9E9E]">(optional)</span>
+              </label>
+              <textarea
+                {...register('description')}
+                rows={2}
+                placeholder="What will you write about in this journal?"
+                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] text-[13px] text-[#212121] dark:text-[#F5F5F5] placeholder-[#9E9E9E] focus:outline-none resize-none"
+                style={{ lineHeight: '1.55' }}
+              />
+              {errors.description && (
+                <p className="mt-1 text-xs text-red-500">{errors.description.message}</p>
+              )}
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
+          {/* Footer */}
+          <div className="flex gap-[10px] px-6 pt-4 pb-[22px] border-t border-[#E0E0E0] dark:border-[#3A3A3A]">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+              className="flex-1 px-4 py-[11px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] text-[14px] font-medium text-[#212121] dark:text-[#F5F5F5] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[var(--brand)] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting || !titleValue.trim()}
+              className="flex-[2] flex items-center justify-center gap-2 px-4 py-[11px] rounded-[10px] text-[14px] font-semibold transition-all disabled:cursor-not-allowed"
+              style={
+                titleValue.trim()
+                  ? {
+                      background: 'linear-gradient(135deg, #1976D2, #1565C0)',
+                      color: '#fff',
+                      boxShadow: '0 4px 12px rgba(25,118,210,0.35)',
+                    }
+                  : {
+                      background: isDark ? '#2C2C2C' : '#EEEEEE',
+                      color: '#9E9E9E',
+                    }
+              }
             >
+              <BookOpen size={15} />
               {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Journal'}
             </button>
           </div>

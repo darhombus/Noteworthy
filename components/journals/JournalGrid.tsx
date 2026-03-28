@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { BookOpen, Plus } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
+import { useUIStore } from '@/store/useUIStore'
 import type { Database } from '@/types/supabase'
 import JournalCard from './JournalCard'
 import JournalModal from './JournalModal'
@@ -39,9 +40,9 @@ interface JournalGridProps {
 
 export default function JournalGrid({ journals }: JournalGridProps) {
   const [sort, setSort] = useState<SortOption>('favourites')
-  const [createOpen, setCreateOpen] = useState(false)
   const [editJournal, setEditJournal] = useState<Journal | null>(null)
   const [deleteJournal, setDeleteJournal] = useState<Journal | null>(null)
+  const { createJournalOpen, setCreateJournalOpen } = useUIStore()
 
   const sorted = useMemo(() => sortJournals(journals, sort), [journals, sort])
 
@@ -50,52 +51,43 @@ export default function JournalGrid({ journals }: JournalGridProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Journals</h1>
-          <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-2xl font-semibold text-[#212121] dark:text-[#F5F5F5]">Journals</h1>
+          <p className="text-sm text-[#757575] dark:text-[#9E9E9E] mt-0.5">
             {journals.length} journal{journals.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortOption)}
-            className="text-sm border border-[#E5E7EB] dark:border-slate-700 rounded-lg px-3 py-1.5 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--brand)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">New Journal</span>
-          </button>
-        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortOption)}
+          className="text-sm border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-lg px-3 py-1.5 bg-white dark:bg-[#1E1E1E] text-[#212121] dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-[#1976D2]"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Empty state */}
       {sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <BookOpen className="w-12 h-12 text-gray-300 dark:text-slate-600 mb-4" />
-          <h2 className="text-lg font-medium text-gray-700 dark:text-slate-300 mb-1">
+          <BookOpen className="w-12 h-12 text-[#E0E0E0] dark:text-[#3A3A3A] mb-4" />
+          <h2 className="text-lg font-medium text-[#757575] dark:text-[#9E9E9E] mb-1">
             No journals yet
           </h2>
-          <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">
+          <p className="text-sm text-[#9E9E9E] dark:text-[#757575] mb-6">
             Start organising your thoughts.
           </p>
           <button
-            onClick={() => setCreateOpen(true)}
-            className="px-4 py-2 rounded-lg bg-[var(--brand)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+            onClick={() => setCreateJournalOpen(true)}
+            className="px-4 py-2 rounded-xl bg-[#1976D2] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
           >
             Create your first journal
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sorted.map((journal) => (
             <JournalCard
               key={journal.journal_id}
@@ -108,8 +100,11 @@ export default function JournalGrid({ journals }: JournalGridProps) {
       )}
 
       {/* Modals */}
-      {createOpen && (
-        <JournalModal onClose={() => setCreateOpen(false)} onSuccess={() => setCreateOpen(false)} />
+      {createJournalOpen && (
+        <JournalModal
+          onClose={() => setCreateJournalOpen(false)}
+          onSuccess={() => setCreateJournalOpen(false)}
+        />
       )}
       {editJournal && (
         <JournalModal

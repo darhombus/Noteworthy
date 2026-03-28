@@ -59,7 +59,7 @@ const FONT_SIZE_MAX = 72
 
 const TEXT_COLORS = [
   { label: 'Default', value: null, hex: '#374151' },
-  { label: 'Blue', value: '#1A56DB', hex: '#1A56DB' },
+  { label: 'Blue', value: '#1976D2', hex: '#1976D2' },
   { label: 'Green', value: '#059669', hex: '#059669' },
   { label: 'Orange', value: '#D97706', hex: '#D97706' },
   { label: 'Purple', value: '#7C3AED', hex: '#7C3AED' },
@@ -105,7 +105,7 @@ function getBlockType(editor: Editor): string {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Divider() {
-  return <div className="w-px h-5 bg-gray-200 dark:bg-slate-600 mx-1 shrink-0" aria-hidden />
+  return <div className="w-px h-5 bg-[#E0E0E0] dark:bg-[#3A3A3A] mx-1 shrink-0" aria-hidden />
 }
 
 interface ToolbarButtonProps {
@@ -130,8 +130,8 @@ function ToolbarButton({ onClick, active, disabled, title, children }: ToolbarBu
         'flex items-center justify-center w-8 h-8 rounded transition-colors shrink-0',
         'disabled:opacity-40 disabled:cursor-not-allowed',
         active
-          ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-          : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700',
+          ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+          : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
       ].join(' ')}
     >
       {children}
@@ -184,15 +184,15 @@ function ColorPicker({
           'flex items-center justify-center w-8 h-8 rounded transition-colors shrink-0',
           'disabled:opacity-40 disabled:cursor-not-allowed',
           open
-            ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-            : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700',
+            ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+            : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
         ].join(' ')}
       >
         {triggerIcon}
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-30 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 w-[152px]">
+        <div className="absolute top-full mt-1 left-0 z-30 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3A3A3A] rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 w-[152px]">
           {colors.map((c) => (
             <button
               key={c.value ?? 'default'}
@@ -207,7 +207,7 @@ function ColorPicker({
                 'w-6 h-6 rounded-full border-2 transition-transform hover:scale-110',
                 activeColor === c.value
                   ? 'border-gray-700 dark:border-white scale-110'
-                  : 'border-gray-300 dark:border-slate-500',
+                  : 'border-gray-300 dark:border-[#3A3A3A]',
               ].join(' ')}
               style={{ backgroundColor: c.hex }}
             />
@@ -255,15 +255,15 @@ function HighlightPicker({ colors, onSelect, onClear, disabled, activeColor }: H
           'flex items-center justify-center w-8 h-8 rounded transition-colors shrink-0',
           'disabled:opacity-40 disabled:cursor-not-allowed',
           open
-            ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-            : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700',
+            ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+            : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
         ].join(' ')}
       >
         <Highlighter className="w-4 h-4" />
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-30 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 w-[120px]">
+        <div className="absolute top-full mt-1 left-0 z-30 bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3A3A3A] rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 w-[120px]">
           {colors.map((c) => (
             <button
               key={c.value}
@@ -278,7 +278,7 @@ function HighlightPicker({ colors, onSelect, onClear, disabled, activeColor }: H
                 'w-6 h-6 rounded-full border-2 transition-transform hover:scale-110',
                 activeColor === c.value
                   ? 'border-gray-700 dark:border-white scale-110'
-                  : 'border-gray-300 dark:border-slate-500',
+                  : 'border-gray-300 dark:border-[#3A3A3A]',
               ].join(' ')}
               style={{ backgroundColor: c.value }}
             />
@@ -291,7 +291,7 @@ function HighlightPicker({ colors, onSelect, onClear, disabled, activeColor }: H
               setOpen(false)
             }}
             title="Remove highlight"
-            className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-700 flex items-center justify-center hover:scale-110 transition-transform"
+            className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-[#3A3A3A] bg-white dark:bg-[#333333] flex items-center justify-center hover:scale-110 transition-transform"
           >
             <X className="w-3 h-3 text-gray-500" />
           </button>
@@ -350,7 +350,7 @@ function FontSizePicker({ currentSize, onApply, disabled }: FontSizePickerProps)
       <div
         className={[
           'flex items-center h-8 rounded border overflow-hidden',
-          'border-gray-200 dark:border-slate-600',
+          'border-gray-200 dark:border-[#3A3A3A]',
           disabled ? 'opacity-40' : '',
         ].join(' ')}
       >
@@ -383,7 +383,7 @@ function FontSizePicker({ currentSize, onApply, disabled }: FontSizePickerProps)
           }}
           className={[
             'w-10 h-full text-center text-sm',
-            'bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200',
+            'bg-white dark:bg-[#333333] text-gray-700 dark:text-[#F5F5F5]',
             'focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand)]',
             'disabled:cursor-not-allowed',
           ].join(' ')}
@@ -401,9 +401,9 @@ function FontSizePicker({ currentSize, onApply, disabled }: FontSizePickerProps)
           title="Font size"
           className={[
             'flex items-center justify-center h-full w-5 shrink-0',
-            'border-l border-gray-200 dark:border-slate-600',
-            'bg-white dark:bg-slate-700 text-gray-400 dark:text-slate-400',
-            'hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors',
+            'border-l border-gray-200 dark:border-[#3A3A3A]',
+            'bg-white dark:bg-[#333333] text-gray-400 dark:text-slate-400',
+            'hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors',
             'disabled:cursor-not-allowed',
           ].join(' ')}
         >
@@ -413,7 +413,7 @@ function FontSizePicker({ currentSize, onApply, disabled }: FontSizePickerProps)
 
       {/* Preset list */}
       {dropdownOpen && (
-        <div className="absolute top-full mt-1 left-0 z-30 w-16 max-h-56 overflow-y-auto bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg py-1">
+        <div className="absolute top-full mt-1 left-0 z-30 w-16 max-h-56 overflow-y-auto bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3A3A3A] rounded-lg shadow-lg py-1">
           {FONT_SIZE_PRESETS.map((size) => (
             <button
               key={size}
@@ -426,8 +426,8 @@ function FontSizePicker({ currentSize, onApply, disabled }: FontSizePickerProps)
               className={[
                 'w-full text-center px-2 py-1 text-sm transition-colors',
                 currentSize === size
-                  ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-                  : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700',
+                  ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+                  : 'text-gray-700 dark:text-[#F5F5F5] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
               ].join(' ')}
             >
               {size}
@@ -474,11 +474,11 @@ function BlockTypePicker({ currentType, onSelect, disabled }: BlockTypePickerPro
         title="Block type"
         className={[
           'flex items-center justify-between gap-1 h-8 w-[130px] px-2 rounded text-sm',
-          'border border-gray-200 dark:border-slate-600 transition-colors shrink-0',
+          'border border-gray-200 dark:border-[#3A3A3A] transition-colors shrink-0',
           'disabled:opacity-40 disabled:cursor-not-allowed',
           open
-            ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)] border-[var(--brand)]'
-            : 'bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600',
+            ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)] border-[var(--brand)]'
+            : 'bg-white dark:bg-[#333333] text-gray-700 dark:text-[#F5F5F5] hover:bg-[#F5F5F5] dark:hover:bg-[#333333]',
         ].join(' ')}
       >
         <span className="truncate">{activeLabel}</span>
@@ -486,7 +486,7 @@ function BlockTypePicker({ currentType, onSelect, disabled }: BlockTypePickerPro
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-30 w-[130px] bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg py-1">
+        <div className="absolute top-full mt-1 left-0 z-30 w-[130px] bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3A3A3A] rounded-lg shadow-lg py-1">
           {BLOCK_TYPES.map((t) => (
             <button
               key={t.value}
@@ -499,8 +499,8 @@ function BlockTypePicker({ currentType, onSelect, disabled }: BlockTypePickerPro
               className={[
                 'w-full text-left px-3 py-1.5 text-sm transition-colors',
                 currentType === t.value
-                  ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-                  : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700',
+                  ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+                  : 'text-gray-700 dark:text-[#F5F5F5] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
               ].join(' ')}
             >
               {t.label}
@@ -547,11 +547,11 @@ function FontFamilyPicker({ currentFont, onSelect, disabled }: FontFamilyPickerP
         title="Font family"
         className={[
           'flex items-center justify-between gap-1 h-8 w-[180px] px-2 rounded text-sm',
-          'border border-gray-200 dark:border-slate-600 transition-colors shrink-0',
+          'border border-gray-200 dark:border-[#3A3A3A] transition-colors shrink-0',
           'disabled:opacity-40 disabled:cursor-not-allowed',
           open
-            ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)] border-[var(--brand)]'
-            : 'bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600',
+            ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)] border-[var(--brand)]'
+            : 'bg-white dark:bg-[#333333] text-gray-700 dark:text-[#F5F5F5] hover:bg-[#F5F5F5] dark:hover:bg-[#333333]',
         ].join(' ')}
       >
         <span
@@ -564,7 +564,7 @@ function FontFamilyPicker({ currentFont, onSelect, disabled }: FontFamilyPickerP
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-30 w-[180px] max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-lg shadow-lg py-1">
+        <div className="absolute top-full mt-1 left-0 z-30 w-[180px] max-h-72 overflow-y-auto bg-white dark:bg-[#2C2C2C] border border-gray-200 dark:border-[#3A3A3A] rounded-lg shadow-lg py-1">
           {/* Group A — System fonts */}
           {SYSTEM_FONTS.map((font) => (
             <button
@@ -578,8 +578,8 @@ function FontFamilyPicker({ currentFont, onSelect, disabled }: FontFamilyPickerP
               className={[
                 'w-full text-left px-3 py-1.5 text-sm transition-colors',
                 currentFont === font.value
-                  ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-                  : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700',
+                  ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+                  : 'text-gray-700 dark:text-[#F5F5F5] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
               ].join(' ')}
               style={{ fontFamily: font.value ?? 'inherit' }}
             >
@@ -588,7 +588,7 @@ function FontFamilyPicker({ currentFont, onSelect, disabled }: FontFamilyPickerP
           ))}
 
           {/* Divider between groups */}
-          <div className="my-1 border-t border-gray-200 dark:border-slate-600" />
+          <div className="my-1 border-t border-gray-200 dark:border-[#3A3A3A]" />
 
           {/* Group B — Google Fonts */}
           {GOOGLE_FONTS.map((font) => (
@@ -603,8 +603,8 @@ function FontFamilyPicker({ currentFont, onSelect, disabled }: FontFamilyPickerP
               className={[
                 'w-full text-left px-3 py-1.5 text-sm transition-colors',
                 currentFont === font.value
-                  ? 'bg-blue-50 dark:bg-indigo-950/60 text-[var(--brand)]'
-                  : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700',
+                  ? 'bg-[#E3F2FD] dark:bg-[#1E3A5F] text-[var(--brand)]'
+                  : 'text-gray-700 dark:text-[#F5F5F5] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]',
               ].join(' ')}
               style={{ fontFamily: font.value ?? 'inherit' }}
             >
@@ -839,7 +839,7 @@ export default function EditorToolbar({ editor, disabled = false }: EditorToolba
   }, [editor])
 
   return (
-    <div className="editor-toolbar sticky top-0 z-10 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700">
+    <div className="editor-toolbar sticky top-0 z-10 bg-white dark:bg-[#1E1E1E] border-b border-[#E0E0E0] dark:border-[#3A3A3A]">
       {/* Main button row */}
       <div className="flex items-center flex-wrap gap-0.5 px-3 py-1.5">
 
@@ -1019,8 +1019,8 @@ export default function EditorToolbar({ editor, disabled = false }: EditorToolba
 
       {/* Link input row */}
       {showLinkInput && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800">
-          <Link2 className="w-4 h-4 text-gray-400 dark:text-slate-500 shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#1E1E1E]">
+          <Link2 className="w-4 h-4 text-gray-400 dark:text-[#616161] shrink-0" />
           <input
             autoFocus
             type="url"
@@ -1036,7 +1036,7 @@ export default function EditorToolbar({ editor, disabled = false }: EditorToolba
               }
             }}
             placeholder="https://…"
-            className="flex-1 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none"
+            className="flex-1 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#616161] focus:outline-none"
           />
           <button
             type="button"
@@ -1054,7 +1054,7 @@ export default function EditorToolbar({ editor, disabled = false }: EditorToolba
               e.preventDefault()
               handleCancelLink()
             }}
-            className="px-3 py-1 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+            className="px-3 py-1 text-sm text-gray-600 dark:text-[#BDBDBD] hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
           >
             Cancel
           </button>

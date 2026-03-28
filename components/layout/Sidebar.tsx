@@ -10,6 +10,8 @@ import {
   Trash2,
   Settings,
   X,
+  Search,
+  LogOut,
 } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 import ThemeToggle from './ThemeToggle'
@@ -48,23 +50,47 @@ export default function Sidebar({ user }: SidebarProps) {
     setSidebarOpen(false)
   }, [pathname, setSidebarOpen])
 
+  // Close drawer when resizing to desktop (≥768px) so stale open state doesn't
+  // cause the mobile drawer to reappear if the user later shrinks the window again.
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [setSidebarOpen])
+
   const initials = getInitials(user.fullName)
 
   const navContent = (
     <nav className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-5 py-5 flex items-center justify-between">
-        <span className="text-[18px] font-bold text-[#1A56DB] dark:text-[#6366F1] leading-none select-none">
-          Noteworthy
-        </span>
-        {/* Close button — mobile only */}
+      <div className="px-4 py-5 flex items-center justify-between border-b border-gray-200 dark:border-[#3A3A3A]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center flex-shrink-0">
+            <BookOpen size={15} className="text-white" />
+          </div>
+          <span className="text-[16px] font-bold text-[#1976D2] dark:text-[#1976D2] leading-none select-none">
+            Noteworthy
+          </span>
+        </div>
         <button
           onClick={() => setSidebarOpen(false)}
-          className="lg:hidden p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-[#1A56DB] dark:focus-visible:ring-[#6366F1] focus-visible:outline-none"
+          className="p-1.5 rounded-lg text-gray-500 dark:text-[#9E9E9E] hover:bg-[#EEEEEE] dark:hover:bg-[#333333] focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
           aria-label="Close menu"
         >
           <X size={18} />
         </button>
+      </div>
+
+      {/* Search */}
+      <div className="px-3 py-3">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A]">
+          <Search size={14} className="text-gray-400 dark:text-[#9E9E9E] flex-shrink-0" />
+          <span className="text-sm text-gray-400 dark:text-[#616161]">Search entries...</span>
+        </div>
       </div>
 
       {/* Nav links */}
@@ -75,17 +101,17 @@ export default function Sidebar({ user }: SidebarProps) {
             <li key={href}>
               <Link
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1A56DB] dark:focus-visible:ring-[#6366F1] focus-visible:outline-none ${
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                   isActive
-                    ? 'bg-[#1A56DB]/10 dark:bg-[#6366F1]/15 text-[#1A56DB] dark:text-[#6366F1] font-semibold'
-                    : 'text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                    ? 'bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
+                    : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]'
                 }`}
               >
-                <Icon size={18} className="flex-shrink-0" />
-                {/* Label hidden on md collapsed, visible on lg+ and in mobile drawer */}
-                <span className="hidden lg:block md-sidebar-label">{label}</span>
-                {/* Always visible in mobile drawer */}
-                <span className="block lg:hidden">{label}</span>
+                <Icon size={17} className="flex-shrink-0" />
+                <span>{label}</span>
+                {isActive && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                )}
               </Link>
             </li>
           )
@@ -93,7 +119,7 @@ export default function Sidebar({ user }: SidebarProps) {
       </ul>
 
       {/* Bottom: user + theme + logout */}
-      <div className="px-3 pb-4 space-y-2 border-t border-gray-200 dark:border-slate-700 pt-3">
+      <div className="px-3 pb-4 border-t border-gray-200 dark:border-[#3A3A3A] pt-3 space-y-1">
         {/* User info */}
         <div className="flex items-center gap-3 px-2 py-2">
           {user.avatarUrl ? (
@@ -101,62 +127,35 @@ export default function Sidebar({ user }: SidebarProps) {
             <img
               src={user.avatarUrl}
               alt={user.fullName}
-              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+              className="w-9 h-9 rounded-full object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-[#1A56DB] dark:bg-[#6366F1] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-full bg-[#1976D2] dark:bg-[#1976D2] text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
               {initials}
             </div>
           )}
-          <div className="hidden lg:block min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {user.fullName}
             </p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{user.email}</p>
+            <p className="text-xs text-gray-500 dark:text-[#9E9E9E] truncate">{user.email}</p>
           </div>
-          {/* Mobile drawer: show name */}
-          <div className="block lg:hidden min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {user.fullName}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{user.email}</p>
-          </div>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              title="Log out"
+              className="p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none flex-shrink-0"
+            >
+              <LogOut size={15} />
+            </button>
+          </form>
         </div>
 
         {/* Theme toggle */}
-        <div className="flex items-center gap-3 px-2">
+        <div className="flex items-center gap-3 px-2 py-1">
           <ThemeToggle />
-          <span className="hidden lg:block text-sm text-gray-600 dark:text-slate-400">Theme</span>
-          <span className="block lg:hidden text-sm text-gray-600 dark:text-slate-400">Theme</span>
+          <span className="text-sm text-gray-600 dark:text-[#9E9E9E]">Theme</span>
         </div>
-
-        {/* Log out */}
-        <form action={signOutAction}>
-          <button
-            type="submit"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-[#1A56DB] dark:focus-visible:ring-[#6366F1] focus-visible:outline-none"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="flex-shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span className="hidden lg:block">Log out</span>
-            <span className="block lg:hidden">Log out</span>
-          </button>
-        </form>
       </div>
     </nav>
   )
@@ -164,16 +163,31 @@ export default function Sidebar({ user }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar: 240px on lg+, 60px (icon-only) on md */}
-      <aside className="hidden md:flex flex-col flex-shrink-0 w-[60px] lg:w-[240px] bg-white dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 h-screen sticky top-0 overflow-y-auto">
+      <aside className="hidden md:flex flex-col flex-shrink-0 w-[60px] lg:w-[240px] bg-[#F5F5F5] dark:bg-[#2C2C2C] border-r border-gray-200 dark:border-[#3A3A3A] h-screen sticky top-0 overflow-y-auto">
         <nav className="flex flex-col h-full">
           {/* Logo */}
-          <div className="px-2 lg:px-5 py-5 flex items-center">
-            <span className="hidden lg:block text-[18px] font-bold text-[#1A56DB] dark:text-[#6366F1] leading-none select-none">
-              Noteworthy
-            </span>
-            {/* Icon-only: show a small brand dot on md */}
-            <div className="block lg:hidden w-7 h-7 rounded-lg bg-[#1A56DB] dark:bg-[#6366F1] flex items-center justify-center">
-              <span className="text-white text-xs font-bold">N</span>
+          <div className="px-2 lg:px-4 py-5 flex items-center border-b border-gray-200 dark:border-[#3A3A3A]">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center flex-shrink-0">
+                <BookOpen size={15} className="text-white" />
+              </div>
+              <span className="hidden lg:block text-[16px] font-bold text-[#1976D2] dark:text-[#1976D2] leading-none select-none truncate">
+                Noteworthy
+              </span>
+            </div>
+          </div>
+
+          {/* Search — lg+ only */}
+          <div className="hidden lg:block px-3 py-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A]">
+              <Search size={14} className="text-gray-400 dark:text-[#9E9E9E] flex-shrink-0" />
+              <span className="text-sm text-gray-400 dark:text-[#616161]">Search entries...</span>
+            </div>
+          </div>
+          {/* Search icon-only on md */}
+          <div className="lg:hidden flex justify-center py-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-[#9E9E9E] hover:bg-[#EEEEEE] dark:hover:bg-[#333333] cursor-pointer">
+              <Search size={17} />
             </div>
           </div>
 
@@ -186,14 +200,17 @@ export default function Sidebar({ user }: SidebarProps) {
                   <Link
                     href={href}
                     title={label}
-                    className={`flex items-center gap-3 px-2 lg:px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1A56DB] dark:focus-visible:ring-[#6366F1] focus-visible:outline-none ${
+                    className={`flex items-center gap-3 px-2 lg:px-3 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                       isActive
-                        ? 'bg-[#1A56DB]/10 dark:bg-[#6366F1]/15 text-[#1A56DB] dark:text-[#6366F1] font-semibold'
-                        : 'text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                        ? 'bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
+                        : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]'
                     }`}
                   >
-                    <Icon size={18} className="flex-shrink-0" />
+                    <Icon size={17} className="flex-shrink-0" />
                     <span className="hidden lg:block">{label}</span>
+                    {isActive && (
+                      <div className="hidden lg:block ml-auto w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                    )}
                   </Link>
                 </li>
               )
@@ -201,7 +218,7 @@ export default function Sidebar({ user }: SidebarProps) {
           </ul>
 
           {/* Bottom */}
-          <div className="px-1.5 lg:px-3 pb-4 space-y-2 border-t border-gray-200 dark:border-slate-700 pt-3">
+          <div className="px-1.5 lg:px-3 pb-4 border-t border-gray-200 dark:border-[#3A3A3A] pt-3 space-y-1">
             {/* User */}
             <div className="flex items-center gap-3 px-1 lg:px-2 py-2">
               {user.avatarUrl ? (
@@ -209,52 +226,44 @@ export default function Sidebar({ user }: SidebarProps) {
                 <img
                   src={user.avatarUrl}
                   alt={user.fullName}
-                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                  className="w-9 h-9 rounded-full object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[#1A56DB] dark:bg-[#6366F1] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-[#1976D2] dark:bg-[#1976D2] text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
                   {initials}
                 </div>
               )}
-              <div className="hidden lg:block min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+              <div className="hidden lg:block min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                   {user.fullName}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{user.email}</p>
+                <p className="text-xs text-gray-500 dark:text-[#9E9E9E] truncate">{user.email}</p>
               </div>
+              <form action={signOutAction} className="hidden lg:block flex-shrink-0">
+                <button
+                  type="submit"
+                  title="Log out"
+                  className="p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
+                >
+                  <LogOut size={15} />
+                </button>
+              </form>
             </div>
 
             {/* Theme */}
-            <div className="flex items-center gap-3 px-1 lg:px-2">
+            <div className="flex items-center gap-3 px-1 lg:px-2 py-1">
               <ThemeToggle />
-              <span className="hidden lg:block text-sm text-gray-600 dark:text-slate-400">Theme</span>
+              <span className="hidden lg:block text-sm text-gray-600 dark:text-[#9E9E9E]">Theme</span>
             </div>
 
-            {/* Log out */}
-            <form action={signOutAction}>
+            {/* Log out icon-only on md */}
+            <form action={signOutAction} className="lg:hidden">
               <button
                 type="submit"
                 title="Log out"
-                className="w-full flex items-center gap-3 px-2 lg:px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-[#1A56DB] dark:focus-visible:ring-[#6366F1] focus-visible:outline-none"
+                className="w-full flex justify-center p-2 rounded-xl text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="flex-shrink-0"
-                  aria-hidden="true"
-                >
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                <span className="hidden lg:block">Log out</span>
+                <LogOut size={17} />
               </button>
             </form>
           </div>
@@ -273,7 +282,7 @@ export default function Sidebar({ user }: SidebarProps) {
         )}
         {/* Drawer panel */}
         <div
-          className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-white dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 transform transition-transform duration-200 ease-in-out md:hidden ${
+          className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-[#F5F5F5] dark:bg-[#2C2C2C] border-r border-gray-200 dark:border-[#3A3A3A] transform transition-transform duration-200 ease-in-out md:hidden ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >

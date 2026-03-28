@@ -9,7 +9,7 @@ interface AppShellProps {
 
 export default function AppShell({ user, children }: AppShellProps) {
   return (
-    <div className="flex h-screen bg-[#F9FAFB] dark:bg-[#0F172A] overflow-hidden">
+    <div className="flex h-screen bg-[#FAFAFA] dark:bg-[#121212] overflow-hidden">
       <Sidebar user={user} />
 
       {/* Main column */}

@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
+import { Eye, EyeOff, BookOpen } from 'lucide-react'
 import { loginAction } from '@/lib/actions/auth'
 import { loginSchema, type LoginFormData } from '@/lib/validations/auth'
 import ThemeToggle from '@/components/layout/ThemeToggle'
@@ -11,33 +12,21 @@ import ThemeToggle from '@/components/layout/ThemeToggle'
 export default function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { rememberMe: false },
   })
 
-  const rememberMe = watch('rememberMe')
-
-  useEffect(() => {
-    if (!rememberMe) {
-      const handleUnload = () => sessionStorage.setItem('nw_sign_out_on_load', '1')
-      window.addEventListener('beforeunload', handleUnload)
-      return () => window.removeEventListener('beforeunload', handleUnload)
-    } else {
-      sessionStorage.removeItem('nw_sign_out_on_load')
-    }
-  }, [rememberMe])
-
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true)
     setServerError(null)
-    const result = await loginAction({ email: data.email, password: data.password })
+    const result = await loginAction({ email: data.email, password: data.password, rememberMe: data.rememberMe })
     if (result?.error) {
       setServerError(result.error)
       setIsLoading(false)
@@ -45,74 +34,94 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F9FAFB] dark:bg-[#0F172A] flex flex-col">
+    <main className="min-h-screen bg-[#FAFAFA] dark:bg-[#121212] flex flex-col">
       <header className="flex justify-end p-4">
         <ThemeToggle />
       </header>
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md bg-white dark:bg-[#1E293B] rounded-xl shadow-sm border border-[#E5E7EB] dark:border-slate-700 p-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+        <div className="w-full max-w-[420px] bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-md border border-[#E0E0E0] dark:border-[#3A3A3A] px-10 py-10 flex flex-col items-center">
+
+          {/* Logo */}
+          <div className="w-16 h-16 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-3 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
+            <BookOpen size={30} className="text-white" />
+          </div>
+          <span className="text-[17px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-6 select-none">
+            Noteworthy
+          </span>
+
+          {/* Heading */}
+          <h1 className="text-[26px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
             Welcome back
           </h1>
-          <p className="text-sm text-gray-500 dark:text-slate-400 mb-8">
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-[#1A56DB] dark:text-[#6366F1] hover:underline">
-              Sign up
-            </Link>
+          <p className="text-sm text-gray-500 dark:text-[#9E9E9E] text-center mb-8">
+            Sign in to continue your journaling journey
           </p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4" noValidate>
+            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">
-                Email
+              <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD] mb-1.5">
+                Email address
               </label>
               <input
                 {...register('email')}
                 type="email"
-                placeholder="you@example.com"
+                placeholder="Enter your email"
                 autoComplete="email"
-                className="w-full px-3 py-2.5 rounded-lg border border-[#E5E7EB] dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A56DB] dark:focus:ring-[#6366F1]"
+                className="w-full px-3.5 py-3 rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2C2C2C] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />
               {errors.email && (
                 <p className="mt-1.5 text-xs text-red-500">{errors.email.message}</p>
               )}
             </div>
 
+            {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD]">
                   Password
                 </label>
-                <Link
-                  href="/reset-password"
-                  className="text-xs text-[#1A56DB] dark:text-[#6366F1] hover:underline"
+                <span
+                  className="text-xs text-gray-400 dark:text-slate-500 cursor-not-allowed select-none"
+                  title="Password reset coming soon"
                 >
                   Forgot password?
-                </Link>
+                </span>
               </div>
-              <input
-                {...register('password')}
-                type="password"
-                placeholder="Your password"
-                autoComplete="current-password"
-                className="w-full px-3 py-2.5 rounded-lg border border-[#E5E7EB] dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A56DB] dark:focus:ring-[#6366F1]"
-              />
+              <div className="relative">
+                <input
+                  {...register('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  className="w-full px-3.5 py-3 pr-11 rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2C2C2C] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#BDBDBD] transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
               {errors.password && (
                 <p className="mt-1.5 text-xs text-red-500">{errors.password.message}</p>
               )}
             </div>
 
+            {/* Remember me */}
             <div className="flex items-center gap-2">
               <input
                 {...register('rememberMe')}
                 type="checkbox"
                 id="rememberMe"
-                className="w-4 h-4 rounded border-gray-300 text-[#1A56DB] focus:ring-[#1A56DB] dark:border-slate-600 dark:bg-slate-800 cursor-pointer"
+                className="w-4 h-4 rounded border-gray-300 text-[#1976D2] focus:ring-[#1976D2] dark:border-[#3A3A3A] dark:bg-[#2C2C2C] cursor-pointer"
               />
               <label
                 htmlFor="rememberMe"
-                className="text-sm text-gray-700 dark:text-slate-300 cursor-pointer select-none"
+                className="text-sm text-gray-600 dark:text-[#9E9E9E] cursor-pointer select-none"
               >
                 Remember me for 30 days
               </label>
@@ -127,11 +136,22 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 bg-[#1A56DB] dark:bg-[#6366F1] text-white rounded-lg font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-[#1976D2] dark:bg-[#1976D2] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
               {isLoading ? 'Logging in…' : 'Log in'}
             </button>
           </form>
+
+          {/* Sign up link */}
+          <p className="mt-7 text-sm text-gray-500 dark:text-[#9E9E9E]">
+            Don&apos;t have an account?{' '}
+            <Link
+              href="/signup"
+              className="text-[#1976D2] dark:text-[#1976D2] font-semibold hover:underline"
+            >
+              Sign up
+            </Link>
+          </p>
         </div>
       </div>
     </main>

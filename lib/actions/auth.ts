@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 
 export async function signUpAction(data: {
   email: string
@@ -27,6 +28,7 @@ export async function signUpAction(data: {
 export async function loginAction(data: {
   email: string
   password: string
+  rememberMe?: boolean
 }): Promise<{ error: string } | undefined> {
   const supabase = await createClient()
 
@@ -36,6 +38,19 @@ export async function loginAction(data: {
   })
 
   if (error) return { error: error.message }
+
+  // Always set nw_remember_me — the expiry controls "remember me" behavior.
+  // rememberMe=true  → maxAge 30 days  → survives browser close
+  // rememberMe=false → no maxAge       → session cookie, disappears when browser closes
+  // proxy.ts forces re-login when this cookie is absent (browser was closed).
+  const cookieStore = await cookies()
+  const cookieOptions: Parameters<typeof cookieStore.set>[2] = {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    ...(data.rememberMe ? { maxAge: 60 * 60 * 24 * 30 } : {}),
+  }
+  cookieStore.set('nw_remember_me', '1', cookieOptions)
 
   redirect('/dashboard')
 }
@@ -68,5 +83,7 @@ export async function updatePasswordAction(
 export async function signOutAction(): Promise<never> {
   const supabase = await createClient()
   await supabase.auth.signOut()
+  const cookieStore = await cookies()
+  cookieStore.delete('nw_remember_me')
   redirect('/')
 }
