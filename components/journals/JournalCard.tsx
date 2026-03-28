@@ -2,36 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Star,
-  MoreHorizontal,
-  Book,
-  Heart,
-  Briefcase,
-  Globe,
-  Music,
-  Camera,
-  Coffee,
-  type LucideProps,
-} from 'lucide-react'
+import { MoreHorizontal, Calendar, Star } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
+import { getColorBg } from '@/lib/validations/journals'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
-
-type IconName = 'book' | 'star' | 'heart' | 'briefcase' | 'globe' | 'music' | 'camera' | 'coffee'
-
-const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
-  book: Book,
-  star: Star,
-  heart: Heart,
-  briefcase: Briefcase,
-  globe: Globe,
-  music: Music,
-  camera: Camera,
-  coffee: Coffee,
-}
 
 interface JournalCardProps {
   journal: Journal
@@ -41,9 +19,14 @@ interface JournalCardProps {
 
 export default function JournalCard({ journal, onEdit, onDelete }: JournalCardProps) {
   const router = useRouter()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const [isFav, setIsFav] = useState(journal.is_favorite)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const accent = journal.color ?? '#1976D2'
+  const emojiBg = isDark ? `${accent}25` : getColorBg(accent)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -56,9 +39,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [menuOpen])
 
-  async function handleFavToggle(e: React.MouseEvent) {
-    e.preventDefault()
-    e.stopPropagation()
+  async function handleFavToggle() {
     const prev = isFav
     setIsFav(!prev)
     const result = await toggleFavourite(journal.journal_id, prev)
@@ -68,7 +49,6 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     }
   }
 
-  const IconComponent = ICON_MAP[journal.icon as IconName] ?? Book
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -77,89 +57,107 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
   return (
     <div
-      className="relative bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-[#E5E7EB] dark:border-slate-700 border-l-4 cursor-pointer hover:shadow-md transition-shadow"
-      style={{ borderLeftColor: journal.color }}
+      className="relative bg-white dark:bg-[#1E1E1E] rounded-[14px] overflow-hidden cursor-pointer border border-[#E0E0E0] dark:border-[#3A3A3A] transition-transform hover:-translate-y-0.5"
+      style={{
+        boxShadow: isDark
+          ? undefined
+          : '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)',
+      }}
       onClick={() => router.push(`/journals/${journal.journal_id}`)}
     >
-      <div className="pl-4 pr-3 py-4">
-        <div className="flex items-start justify-between gap-2">
-          {/* Icon + Title */}
-          <div className="flex items-center gap-2 min-w-0">
-            <IconComponent
-              className="w-5 h-5 shrink-0"
-              style={{ color: journal.color }}
-            />
-            <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-              {journal.title}
-            </h3>
+      {/* Color strip */}
+      <div className="h-1" style={{ background: accent }} />
+
+      {/* Card body */}
+      <div className="px-5 pt-5 pb-[18px]">
+        {/* Top row */}
+        <div className="flex items-start gap-3.5 mb-4">
+          {/* Emoji bubble */}
+          <div
+            className="flex items-center justify-center w-[52px] h-[52px] rounded-[14px] text-2xl shrink-0"
+            style={{ background: emojiBg }}
+          >
+            {journal.icon}
           </div>
 
-          {/* Actions — stop propagation so card click doesn't fire */}
+          {/* Title + description */}
+          <div className="flex-1 min-w-0 pt-1">
+            <h3
+              className="text-[15px] font-bold text-[#212121] dark:text-[#F5F5F5] truncate"
+              style={{ letterSpacing: '-0.3px' }}
+            >
+              {journal.title}
+            </h3>
+            {journal.description && (
+              <p className="text-xs text-[#9E9E9E] dark:text-[#757575] truncate mt-0.5">
+                {journal.description}
+              </p>
+            )}
+          </div>
+
+          {/* More menu */}
           <div
-            className="flex items-center gap-0.5 shrink-0"
+            ref={menuRef}
+            className="relative shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              onClick={handleFavToggle}
-              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-              aria-label={isFav ? 'Remove from favourites' : 'Add to favourites'}
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className="p-1.5 rounded-lg hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] transition-colors"
+              aria-label="More options"
             >
-              <Star
-                className={`w-4 h-4 transition-colors ${
-                  isFav
-                    ? 'fill-[var(--brand)] text-[var(--brand)]'
-                    : 'text-gray-400 dark:text-slate-500'
-                }`}
-              />
+              <MoreHorizontal size={16} className="text-[#9E9E9E] dark:text-[#757575]" />
             </button>
-
-            <div ref={menuRef} className="relative">
-              <button
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-                aria-label="More options"
-              >
-                <MoreHorizontal className="w-4 h-4 text-gray-400 dark:text-slate-500" />
-              </button>
-
-              {menuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 rounded-lg shadow-lg z-10 py-1">
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onEdit()
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onDelete()
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1E1E1E] border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-xl shadow-lg z-10 py-1">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    handleFavToggle()
+                  }}
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                >
+                  <Star
+                    size={14}
+                    className={isFav ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
+                  />
+                  {isFav ? 'Remove favourite' : 'Add to favourites'}
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onEdit()
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onDelete()
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {journal.description && (
-          <p className="mt-1.5 text-sm text-gray-500 dark:text-slate-400 truncate">
-            {journal.description}
-          </p>
-        )}
-
-        <div className="mt-3 flex items-center gap-2 text-xs text-gray-400 dark:text-slate-500">
-          <span>
+        {/* Footer row */}
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xs font-semibold px-[10px] py-0.5 rounded-full"
+            style={{ color: accent, background: emojiBg }}
+          >
             {journal.entry_count} {journal.entry_count === 1 ? 'entry' : 'entries'}
           </span>
-          <span>·</span>
-          <span>Updated {formattedDate}</span>
+          <span className="flex items-center gap-1 text-xs text-[#9E9E9E] dark:text-[#757575]">
+            <Calendar size={11} />
+            {formattedDate}
+          </span>
         </div>
       </div>
     </div>

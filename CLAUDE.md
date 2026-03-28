@@ -33,15 +33,26 @@ CODING RULES (non-negotiable)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DESIGN RULES (apply to every component)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Light bg: #F9FAFB  Surface: #FFFFFF  Border: #E5E7EB
-Dark  bg: #0F172A  Surface: #1E293B  Border: #334155
-Brand (light): #1A56DB    Brand (dark): #6366F1
+Light bg: #FAFAFA  Surface: #FFFFFF  Border: #E0E0E0
+Dark  bg: #121212  Surface: #1E1E1E  Border: #3A3A3A
+Brand (both modes): #1976D2
+Sidebar light: #F5F5F5  Sidebar dark: #2C2C2C
+Text primary light: #212121  Text primary dark: #F5F5F5
+Text secondary light: #757575  Text secondary dark: #9E9E9E
+Active nav bg light: #1976D2  Active nav bg dark: #1E3A5F
 Font UI: Inter  |  Font content: Georgia serif 18px / 1.75 line-height
-Cards: rounded-xl shadow-sm border + dark:border-slate-700
+Cards: rounded-xl shadow-sm border border-[#E0E0E0] dark:border-[#3A3A3A]
 
 DO NOT: gradients on buttons, neon colours, glass-morphism, animated blobs,
         centre-aligned body text, emoji as chrome, hard-coded light-mode colours.
 DO    : generous whitespace, clear typographic scale, single brand colour.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FRAMEWORK QUIRKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- This project runs Next.js 16, which deprecates `middleware.ts` in favour of `proxy.ts`.
+  NEVER create or rename to `middleware.ts` — it will trigger a deprecation warning and
+  the file will be ignored. All route-guard and session-refresh logic lives in `proxy.ts`.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BUILD DISCIPLINE

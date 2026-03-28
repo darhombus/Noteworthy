@@ -1,14 +1,32 @@
 import { z } from 'zod'
 
-export const JOURNAL_COLORS = [
-  '#1A56DB', '#059669', '#D97706', '#7C3AED',
-  '#DC2626', '#0891B2', '#65A30D', '#DB2777',
+export const COLOR_DEFS = [
+  { value: '#1976D2', bg: '#E3F2FD', label: 'Blue' },
+  { value: '#2E7D32', bg: '#E8F5E9', label: 'Green' },
+  { value: '#6A1B9A', bg: '#F3E5F5', label: 'Purple' },
+  { value: '#E65100', bg: '#FBE9E7', label: 'Orange' },
+  { value: '#00695C', bg: '#E0F2F1', label: 'Teal' },
+  { value: '#C62828', bg: '#FFEBEE', label: 'Red' },
+  { value: '#283593', bg: '#E8EAF6', label: 'Indigo' },
+  { value: '#F57F17', bg: '#FFFDE7', label: 'Amber' },
 ] as const
 
-export const JOURNAL_ICONS = [
-  'book', 'star', 'heart', 'briefcase',
-  'globe', 'music', 'camera', 'coffee',
+export const JOURNAL_COLORS = [
+  '#1976D2', '#2E7D32', '#6A1B9A', '#E65100',
+  '#00695C', '#C62828', '#283593', '#F57F17',
 ] as const
+
+export const JOURNAL_ICONS = ['📔', '📓', '📒', '📕', '📗', '📘', '📙', '✨'] as const
+
+export function getColorBg(color: string): string {
+  const def = COLOR_DEFS.find((c) => c.value === color)
+  return def?.bg ?? '#E3F2FD'
+}
+
+export function getColorLabel(color: string): string {
+  const def = COLOR_DEFS.find((c) => c.value === color)
+  return def?.label ?? 'Blue'
+}
 
 export const createJournalSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title must be 200 characters or less'),

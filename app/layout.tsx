@@ -14,8 +14,8 @@ import {
   Libre_Baskerville,
   Dancing_Script,
 } from 'next/font/google'
-import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'sonner'
+import Providers from '@/components/Providers'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -96,10 +96,10 @@ export default function RootLayout({
       <body
         className={`${roboto.variable} ${openSans.variable} ${lato.variable} ${montserrat.variable} ${oswald.variable} ${raleway.variable} ${merriweather.variable} ${lora.variable} ${playfair.variable} ${garamond.variable} ${baskerville.variable} ${dancing.variable} ${inter.className}`}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <Providers>
           {children}
           <Toaster richColors position="top-right" />
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   )

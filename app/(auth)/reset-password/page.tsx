@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
+import { BookOpen } from 'lucide-react'
 import { resetPasswordAction } from '@/lib/actions/auth'
 import { resetPasswordSchema, type ResetPasswordFormData } from '@/lib/validations/auth'
 import ThemeToggle from '@/components/layout/ThemeToggle'
@@ -35,25 +36,31 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F9FAFB] dark:bg-[#0F172A] flex flex-col">
+    <main className="min-h-screen bg-[#FAFAFA] dark:bg-[#121212] flex flex-col">
       <header className="flex justify-end p-4">
         <ThemeToggle />
       </header>
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md bg-white dark:bg-[#1E293B] rounded-xl shadow-sm border border-[#E5E7EB] dark:border-slate-700 p-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+        <div className="w-full max-w-[420px] bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-md border border-[#E0E0E0] dark:border-[#3A3A3A] px-10 py-10 flex flex-col items-center">
+
+          {/* Logo */}
+          <div className="w-16 h-16 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-3 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
+            <BookOpen size={30} className="text-white" />
+          </div>
+          <span className="text-[17px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-6 select-none">
+            Noteworthy
+          </span>
+
+          <h1 className="text-[26px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
             Reset your password
           </h1>
-          <p className="text-sm text-gray-500 dark:text-slate-400 mb-8">
-            Remember it?{' '}
-            <Link href="/login" className="text-[#1A56DB] dark:text-[#6366F1] hover:underline">
-              Log in
-            </Link>
+          <p className="text-sm text-gray-500 dark:text-[#9E9E9E] text-center mb-8">
+            Enter your email and we&apos;ll send you a reset link
           </p>
 
           {success ? (
-            <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3">
+            <div className="w-full rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-4">
               <p className="text-sm font-medium text-green-700 dark:text-green-400">
                 Check your email for a reset link
               </p>
@@ -62,17 +69,17 @@ export default function ResetPasswordPage() {
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+            <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4" noValidate>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">
-                  Email
+                <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD] mb-1.5">
+                  Email address
                 </label>
                 <input
                   {...register('email')}
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="Enter your email"
                   autoComplete="email"
-                  className="w-full px-3 py-2.5 rounded-lg border border-[#E5E7EB] dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1A56DB] dark:focus:ring-[#6366F1]"
+                  className="w-full px-3.5 py-3 rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2C2C2C] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
                 />
                 {errors.email && (
                   <p className="mt-1.5 text-xs text-red-500">{errors.email.message}</p>
@@ -88,12 +95,19 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 bg-[#1A56DB] dark:bg-[#6366F1] text-white rounded-lg font-medium text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-[#1976D2] dark:bg-[#1976D2] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mt-2"
               >
                 {isLoading ? 'Sending…' : 'Send reset link'}
               </button>
             </form>
           )}
+
+          <p className="mt-7 text-sm text-gray-500 dark:text-[#9E9E9E]">
+            Remember it?{' '}
+            <Link href="/login" className="text-[#1976D2] dark:text-[#1976D2] font-semibold hover:underline">
+              Log in
+            </Link>
+          </p>
         </div>
       </div>
     </main>

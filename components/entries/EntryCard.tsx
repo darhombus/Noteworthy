@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pin, MoreHorizontal } from 'lucide-react'
+import { Calendar, MoreHorizontal, Pin } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { togglePin } from '@/lib/actions/entries'
 import type { Database } from '@/types/supabase'
@@ -13,14 +14,21 @@ type Entry = Database['public']['Tables']['entries']['Row']
 interface EntryCardProps {
   entry: Entry
   journalId: string
+  accentColor: string
+  isLatest: boolean
   onDelete: (entry: Entry) => void
 }
 
-export default function EntryCard({ entry, journalId, onDelete }: EntryCardProps) {
+export default function EntryCard({ entry, journalId, accentColor, isLatest, onDelete }: EntryCardProps) {
   const router = useRouter()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const [isPinned, setIsPinned] = useState(entry.is_pinned)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const emojiBg = isDark ? `${accentColor}25` : `${accentColor}15`
+  const readTime = Math.max(1, Math.ceil(entry.word_count / 200))
 
   useEffect(() => {
     if (!menuOpen) return
@@ -33,8 +41,7 @@ export default function EntryCard({ entry, journalId, onDelete }: EntryCardProps
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [menuOpen])
 
-  async function handlePinToggle(e: React.MouseEvent) {
-    e.stopPropagation()
+  async function handlePinToggle() {
     const prev = isPinned
     setIsPinned(!prev)
     const result = await togglePin(entry.entry_id, prev)
@@ -45,56 +52,82 @@ export default function EntryCard({ entry, journalId, onDelete }: EntryCardProps
   }
 
   const formattedDate = new Intl.DateTimeFormat('en-US', {
-    month: 'long',
+    month: 'short',
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(`${entry.entry_date}T00:00:00`))
 
   return (
     <div
-      className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-[#E5E7EB] dark:border-slate-700 p-4 cursor-pointer hover:shadow-md transition-shadow"
+      className="relative flex items-stretch bg-white dark:bg-[#1E1E1E] rounded-xl cursor-pointer border border-[#E0E0E0] dark:border-[#3A3A3A] transition-transform hover:translate-x-0.5 overflow-hidden"
       onClick={() => router.push(`/journals/${journalId}/entries/${entry.entry_id}`)}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="font-semibold text-gray-900 dark:text-white truncate">
+      {/* Accent left bar */}
+      <div
+        className="w-1 shrink-0"
+        style={{
+          background: accentColor,
+          opacity: isLatest ? 1 : 0.4,
+        }}
+      />
+
+      {/* Content */}
+      <div className="flex-1 py-[18px] pl-[18px] pr-5">
+        {/* Row 1: title + badges + menu */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <h3
+            className="text-[15px] font-semibold text-[#212121] dark:text-[#F5F5F5] truncate flex-1"
+            style={{ letterSpacing: '-0.2px' }}
+          >
             {entry.title || 'Untitled'}
           </h3>
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{formattedDate}</p>
-        </div>
 
-        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={handlePinToggle}
-            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-            aria-label={isPinned ? 'Unpin entry' : 'Pin entry'}
+          {isLatest && (
+            <span
+              className="shrink-0 text-[10px] font-bold px-[9px] py-0.5 rounded-full uppercase"
+              style={{
+                color: accentColor,
+                background: emojiBg,
+                letterSpacing: '0.4px',
+              }}
+            >
+              Latest
+            </span>
+          )}
+
+          <div
+            ref={menuRef}
+            className="relative shrink-0"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Pin
-              className={`w-4 h-4 transition-colors ${
-                isPinned
-                  ? 'fill-[var(--brand)] text-[var(--brand)]'
-                  : 'text-gray-400 dark:text-slate-500'
-              }`}
-            />
-          </button>
-
-          <div ref={menuRef} className="relative">
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
-              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+              className="p-1 rounded hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] transition-colors"
               aria-label="More options"
             >
-              <MoreHorizontal className="w-4 h-4 text-gray-400 dark:text-slate-500" />
+              <MoreHorizontal size={16} className="text-[#9E9E9E] dark:text-[#757575]" />
             </button>
-
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-32 bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-[#1E1E1E] border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-xl shadow-lg z-10 py-1">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    handlePinToggle()
+                  }}
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                >
+                  <Pin
+                    size={13}
+                    className={isPinned ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
+                  />
+                  {isPinned ? 'Unpin' : 'Pin'}
+                </button>
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     router.push(`/journals/${journalId}/entries/${entry.entry_id}`)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
                 >
                   Edit
                 </button>
@@ -103,7 +136,7 @@ export default function EntryCard({ entry, journalId, onDelete }: EntryCardProps
                     setMenuOpen(false)
                     onDelete(entry)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
                 >
                   Delete
                 </button>
@@ -111,15 +144,28 @@ export default function EntryCard({ entry, journalId, onDelete }: EntryCardProps
             )}
           </div>
         </div>
-      </div>
 
-      <div className="mt-2">
-        <ReadOnlyPreview content={entry.content as string} maxChars={120} />
-      </div>
+        {/* Row 2: date + read time */}
+        <div className="flex items-center gap-1 text-xs text-[#9E9E9E] dark:text-[#757575] mb-2">
+          <Calendar size={10} />
+          <span>{formattedDate}</span>
+          <span>·</span>
+          <span>{readTime} min read</span>
+        </div>
 
-      <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">
-        {entry.word_count} {entry.word_count === 1 ? 'word' : 'words'}
-      </p>
+        {/* Row 3: content preview */}
+        <div
+          className="text-[13px] leading-[1.6] overflow-hidden"
+          style={{
+            color: isDark ? '#9E9E9E' : '#616161',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
+          <ReadOnlyPreview content={entry.content as string} maxChars={160} />
+        </div>
+      </div>
     </div>
   )
 }
