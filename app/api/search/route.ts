@@ -5,7 +5,7 @@ import { extractPlainText } from '@/lib/utils/extractPlainText'
 import type { JSONContent } from '@tiptap/core'
 
 const searchParamsSchema = z.object({
-  q: z.string().min(1).max(200),
+  q: z.string().max(200).optional().transform((v) => v ?? ''),
   journalId: z.string().uuid().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -119,6 +119,105 @@ export async function GET(request: NextRequest) {
         .filter((id) => id.length > 0)
     : undefined
 
+  const hasTextQuery = params.q.length > 0
+  const hasTagFilter = !!(tagIdArray && tagIdArray.length > 0)
+
+  // Nothing to search
+  if (!hasTextQuery && !hasTagFilter) {
+    return NextResponse.json({ journals: [], entries: [] })
+  }
+
+  // ── Tag-only mode ──────────────────────────────────────────────────────────
+  // When there is no text query but tag IDs are present, skip the FTS RPC and
+  // query entries by tag relationship directly.
+  if (!hasTextQuery && hasTagFilter) {
+    const { data: tagEntryRows, error: tagEntryError } = await supabase
+      .from('entry_tags')
+      .select('entry_id')
+      .in('tag_id', tagIdArray!)
+
+    if (tagEntryError) {
+      console.error('Tag-only search (entry_tags):', tagEntryError)
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+    }
+
+    const entryIds = [...new Set((tagEntryRows ?? []).map((r) => r.entry_id))]
+
+    if (entryIds.length === 0) {
+      return NextResponse.json({ journals: [], entries: [] })
+    }
+
+    type TagOnlyRow = {
+      entry_id: string
+      title: string | null
+      journal_id: string
+      entry_date: string
+      word_count: number
+      is_pinned: boolean
+      content: unknown
+      journals: { title: string; color: string } | null
+      entry_tags: Array<{ tags: { tag_id: string; tag_name: string; color: string } | null }>
+    }
+
+    let tagOnlyQuery = supabase
+      .from('entries')
+      .select(
+        'entry_id, title, journal_id, entry_date, word_count, is_pinned, content, ' +
+        'journals!inner(title, color), ' +
+        'entry_tags(tags(tag_id, tag_name, color))',
+      )
+      .in('entry_id', entryIds)
+      .is('deleted_at', null)
+
+    if (params.journalId) tagOnlyQuery = tagOnlyQuery.eq('journal_id', params.journalId)
+    if (params.from) tagOnlyQuery = tagOnlyQuery.gte('entry_date', params.from)
+    if (params.to) tagOnlyQuery = tagOnlyQuery.lte('entry_date', params.to)
+    if (params.pinned === 'true') tagOnlyQuery = tagOnlyQuery.eq('is_pinned', true)
+
+    const { data: tagOnlyRows, error: tagOnlyError } = await tagOnlyQuery
+      .order('is_pinned', { ascending: false })
+      .order('entry_date', { ascending: false })
+      .limit(20)
+
+    if (tagOnlyError) {
+      console.error('Tag-only search (entries):', tagOnlyError)
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+    }
+
+    const tagOnlyEntries = (tagOnlyRows as unknown as TagOnlyRow[]).map((row) => {
+      const plainText = (() => {
+        try {
+          if (!row.content || typeof row.content !== 'object') return ''
+          return extractPlainText(row.content as JSONContent)
+        } catch {
+          return ''
+        }
+      })()
+      const snippet = buildContextualSnippet(plainText, [])
+
+      const tags = (row.entry_tags ?? [])
+        .map((et) => et.tags)
+        .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
+
+      return {
+        entry_id: row.entry_id,
+        title: row.title,
+        journal_id: row.journal_id,
+        journal_title: row.journals?.title ?? '',
+        journal_color: row.journals?.color ?? '#1976D2',
+        entry_date: row.entry_date,
+        word_count: row.word_count,
+        is_pinned: row.is_pinned,
+        snippet,
+        matched_terms: [] as string[],
+        tags,
+      }
+    })
+
+    return NextResponse.json({ journals: [], entries: tagOnlyEntries })
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const rpcArgs: SearchRpcArgs = { p_query: params.q }
   if (params.journalId) rpcArgs.p_journal_id = params.journalId
   if (params.from) rpcArgs.p_from = params.from
@@ -196,6 +295,28 @@ export async function GET(request: NextRequest) {
     }))
   }
 
+  // Fetch tags for all returned entries in one query
+  type EntryTagRow = {
+    entry_id: string
+    tags: { tag_id: string; tag_name: string; color: string } | null
+  }
+  const ftsEntryIds = (entryResult.data ?? []).map((r) => r.entry_id)
+  const tagMap = new Map<string, Array<{ tag_id: string; tag_name: string; color: string }>>()
+
+  if (ftsEntryIds.length > 0) {
+    const { data: entryTagRows } = await supabase
+      .from('entry_tags')
+      .select('entry_id, tags(tag_id, tag_name, color)')
+      .in('entry_id', ftsEntryIds)
+
+    for (const row of (entryTagRows as unknown as EntryTagRow[]) ?? []) {
+      if (!row.tags) continue
+      const list = tagMap.get(row.entry_id) ?? []
+      list.push(row.tags)
+      tagMap.set(row.entry_id, list)
+    }
+  }
+
   // Process entries
   let entries: {
     entry_id: string
@@ -208,6 +329,7 @@ export async function GET(request: NextRequest) {
     is_pinned: boolean
     snippet: string
     matched_terms: string[]
+    tags: Array<{ tag_id: string; tag_name: string; color: string }>
   }[] = []
 
   if (entryResult.error) {
@@ -243,6 +365,7 @@ export async function GET(request: NextRequest) {
         is_pinned: row.is_pinned,
         snippet,
         matched_terms,
+        tags: tagMap.get(row.entry_id) ?? [],
       }
     })
   }

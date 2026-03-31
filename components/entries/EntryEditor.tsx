@@ -10,6 +10,7 @@ import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import SaveStatus from './SaveStatus'
 import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
+import TagInput from './TagInput'
 import JournalEditor from '@/components/editor/JournalEditor'
 import type { JSONContent } from '@tiptap/core'
 import type { Database } from '@/types/supabase'
@@ -20,9 +21,16 @@ type JournalMeta = Pick<
   'journal_id' | 'title' | 'color'
 >
 
+interface EntryTag {
+  tag_id: string
+  tag_name: string
+  color: string
+}
+
 interface EntryEditorProps {
   entry: Entry
   journal: JournalMeta
+  initialTags: EntryTag[]
 }
 
 /**
@@ -47,7 +55,7 @@ function parseInitialContent(raw: unknown): JSONContent | null {
   }
 }
 
-export default function EntryEditor({ entry, journal }: EntryEditorProps) {
+export default function EntryEditor({ entry, journal, initialTags }: EntryEditorProps) {
   const router = useRouter()
 
   const [title, setTitle] = useState(entry.title ?? '')
@@ -63,7 +71,7 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
   // content is sent as JSONContent — the server action stores it as JSONB.
   const savePayload = useMemo(
     () => ({
-      content: editorContent,
+      ...(editorContent !== null && { content: editorContent }),
       title: title || undefined,
       entry_date: entryDate,
     }),
@@ -174,8 +182,11 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
             type="date"
             value={entryDate}
             onChange={(e) => setEntryDate(e.target.value)}
-            className="text-sm text-gray-500 dark:text-slate-400 bg-transparent border border-[var(--border)] rounded-lg px-3 py-1.5 mb-8 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
+            className="text-sm text-gray-500 dark:text-slate-400 bg-transparent border border-[var(--border)] rounded-lg px-3 py-1.5 mb-6 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
           />
+
+          {/* Tags */}
+          <TagInput entryId={entry.entry_id} initialTags={initialTags} />
 
           {/* Tiptap rich-text editor */}
           <JournalEditor
@@ -183,13 +194,6 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
             onChange={handleEditorChange}
             editable={true}
           />
-
-          {/* Tags placeholder */}
-          <div className="mt-8 pt-4 border-t border-[var(--border)]">
-            <p className="text-sm text-gray-400 dark:text-slate-500 italic">
-              Tags will be added in a later module
-            </p>
-          </div>
         </div>
       </div>
 

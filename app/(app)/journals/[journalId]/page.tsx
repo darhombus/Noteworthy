@@ -6,6 +6,10 @@ interface JournalPageProps {
   params: Promise<{ journalId: string }>
 }
 
+interface RawEntryTag {
+  tags: { tag_id: string; tag_name: string; color: string } | null
+}
+
 export default async function JournalPage({ params }: JournalPageProps) {
   const { journalId } = await params
   const supabase = await createClient()
@@ -14,7 +18,7 @@ export default async function JournalPage({ params }: JournalPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: journal }, { data: entries }] = await Promise.all([
+  const [{ data: journal }, { data: rawEntries }] = await Promise.all([
     supabase
       .from('journals')
       .select('*')
@@ -24,7 +28,7 @@ export default async function JournalPage({ params }: JournalPageProps) {
       .single(),
     supabase
       .from('entries')
-      .select('*')
+      .select('*, entry_tags(tags(tag_id, tag_name, color))')
       .eq('journal_id', journalId)
       .is('deleted_at', null)
       .order('is_pinned', { ascending: false })
@@ -33,5 +37,14 @@ export default async function JournalPage({ params }: JournalPageProps) {
 
   if (!journal) notFound()
 
-  return <EntryList journal={journal} entries={entries ?? []} />
+  // Flatten nested entry_tags → tags array
+  const entries = (rawEntries ?? []).map((entry) => {
+    const { entry_tags, ...rest } = entry as typeof entry & { entry_tags: RawEntryTag[] }
+    const tags = (entry_tags ?? [])
+      .map((et) => et.tags)
+      .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
+    return { ...rest, tags }
+  })
+
+  return <EntryList journal={journal} entries={entries} />
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Calendar, Star } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -8,6 +9,13 @@ import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
 import { getColorBg } from '@/lib/validations/journals'
 import type { Database } from '@/types/supabase'
+
+function hexAlpha(hex: string, alpha: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${(parseInt(alpha, 16) / 255).toFixed(3)})`
+}
 
 type Journal = Database['public']['Tables']['journals']['Row']
 
@@ -20,23 +28,34 @@ interface JournalCardProps {
 export default function JournalCard({ journal, onEdit, onDelete }: JournalCardProps) {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
+  const [mounted, setMounted] = useState(false)
   const [isFav, setIsFav] = useState(journal.is_favorite)
   const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
 
+  useEffect(() => { setMounted(true) }, [])
+
+  const isDark = mounted && resolvedTheme === 'dark'
   const accent = journal.color ?? '#1976D2'
-  const emojiBg = isDark ? `${accent}25` : getColorBg(accent)
+  const emojiBg = isDark ? hexAlpha(accent, '25') : getColorBg(accent)
 
   useEffect(() => {
     if (!menuOpen) return
     function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const t = e.target as Node
+      if (!buttonRef.current?.contains(t) && !dropdownRef.current?.contains(t)) {
         setMenuOpen(false)
       }
     }
+    function handleScroll() { setMenuOpen(false) }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
   }, [menuOpen])
 
   async function handleFavToggle() {
@@ -49,6 +68,15 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     }
   }
 
+  function handleMenuToggle(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!menuOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    setMenuOpen((prev) => !prev)
+  }
+
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -57,7 +85,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
   return (
     <div
-      className="relative bg-[var(--bg-surface)] rounded-[14px] overflow-hidden cursor-pointer border border-[var(--border)] transition-transform hover:-translate-y-0.5"
+      className={`relative bg-[var(--bg-surface)] rounded-[14px] overflow-hidden cursor-pointer border border-[var(--border)] transition-transform ${menuOpen ? '' : 'hover:-translate-y-0.5'}`}
       style={{
         boxShadow: isDark
           ? undefined
@@ -95,54 +123,16 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
             )}
           </div>
 
-          {/* More menu */}
-          <div
-            ref={menuRef}
-            className="relative shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* More menu trigger */}
+          <div className="shrink-0">
             <button
-              onClick={() => setMenuOpen((prev) => !prev)}
+              ref={buttonRef}
+              onClick={handleMenuToggle}
               className="p-1.5 rounded-lg hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] transition-colors"
               aria-label="More options"
             >
               <MoreHorizontal size={16} className="text-[var(--text-muted)]" />
             </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg z-10 py-1">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false)
-                    handleFavToggle()
-                  }}
-                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-                >
-                  <Star
-                    size={14}
-                    className={isFav ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
-                  />
-                  {isFav ? 'Remove favourite' : 'Add to favourites'}
-                </button>
-                <button
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onEdit()
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setMenuOpen(false)
-                    onDelete()
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -160,6 +150,39 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           </span>
         </div>
       </div>
+
+      {/* Dropdown — portal to document.body so overflow-hidden can't clip it */}
+      {mounted && menuOpen && menuPos && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
+          className="w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1"
+        >
+          <button
+            onClick={() => { setMenuOpen(false); handleFavToggle() }}
+            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            <Star
+              size={14}
+              className={isFav ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
+            />
+            {isFav ? 'Remove favourite' : 'Add to favourites'}
+          </button>
+          <button
+            onClick={() => { setMenuOpen(false); onEdit() }}
+            className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => { setMenuOpen(false); onDelete() }}
+            className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            Delete
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
