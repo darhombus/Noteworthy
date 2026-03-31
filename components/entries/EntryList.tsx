@@ -2,20 +2,37 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X, ChevronDown } from 'lucide-react'
+import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createEntry } from '@/lib/actions/entries'
 import { getColorBg } from '@/lib/validations/journals'
+
+/** Convert a 6-digit hex color + 2-char hex opacity to rgba() to avoid
+ *  browser normalisation causing SSR/client hydration mismatches. */
+function hexAlpha(hex: string, alpha: string): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${(parseInt(alpha, 16) / 255).toFixed(3)})`
+}
 import { useDebounce } from '@/hooks/useDebounce'
 import EntryCard from './EntryCard'
 import DeleteEntryModal from './DeleteEntryModal'
 import Spinner from '@/components/ui/Spinner'
 import type { Database } from '@/types/supabase'
 
-type Entry = Database['public']['Tables']['entries']['Row']
+type EntryBase = Database['public']['Tables']['entries']['Row']
 type Journal = Database['public']['Tables']['journals']['Row']
+
+interface EntryTag {
+  tag_id: string
+  tag_name: string
+  color: string
+}
+
+type Entry = EntryBase & { tags?: EntryTag[] }
 
 interface EntryListProps {
   journal: Journal
@@ -111,10 +128,32 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
+// Parse #tagname tokens from a query string
+function parseHashTags(query: string): { text: string; tagNames: string[] } {
+  const tagNames: string[] = []
+  const text = query
+    .replace(/#([a-z0-9-]+)/gi, (_, name: string) => {
+      tagNames.push(name.toLowerCase())
+      return ''
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { text, tagNames }
+}
+
+// Remove a specific #tagname token from a query string
+function removeHashTag(query: string, tagName: string): string {
+  return query
+    .split(/\s+/)
+    .filter((token) => token.toLowerCase() !== `#${tagName.toLowerCase()}`)
+    .join(' ')
+    .trim()
+}
+
 export default function EntryList({ journal, entries }: EntryListProps) {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
+  const [mounted, setMounted] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -123,25 +162,26 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [pinnedOnly, setPinnedOnly] = useState(false)
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
 
+  // Tags loaded for name→ID lookup (used when resolving #tagname tokens)
   const [tags, setTags] = useState<Tag[]>([])
-  const [tagsDropdownOpen, setTagsDropdownOpen] = useState(false)
-  const [tagsError, setTagsError] = useState(false)
+  const tagsLoadedRef = useRef(false)
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchFetched, setSearchFetched] = useState(false)
   const [queryTooLong, setQueryTooLong] = useState(false)
 
-  const tagsDropdownRef = useRef<HTMLDivElement>(null)
-  const tagsLoadedRef = useRef(false)
-
   const debouncedQuery = useDebounce(searchQuery, 150)
   const abortRef = useRef<AbortController | null>(null)
 
   const accent = journal.color ?? '#1976D2'
-  const emojiBg = isDark ? `${accent}25` : getColorBg(accent)
+
+  // Load tags once for name→ID resolution
+  useEffect(() => { setMounted(true) }, [])
+
+  const isDark = mounted && resolvedTheme === 'dark'
+  const emojiBg = isDark ? hexAlpha(accent, '25') : getColorBg(accent)
 
   const lastUpdated = new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -149,48 +189,58 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     year: 'numeric',
   }).format(new Date(journal.updated_at))
 
-  // Load tags once
   useEffect(() => {
     if (tagsLoadedRef.current) return
     tagsLoadedRef.current = true
     fetch('/api/tags')
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data: Tag[]) => setTags(data))
-      .catch(() => setTagsError(true))
+      .catch(() => {/* graceful degradation — #tag filters won't resolve */})
   }, [])
 
-  // Close tags dropdown on outside click
-  useEffect(() => {
-    if (!tagsDropdownOpen) return
-    function handleClick(e: MouseEvent) {
-      if (tagsDropdownRef.current && !tagsDropdownRef.current.contains(e.target as Node)) {
-        setTagsDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [tagsDropdownOpen])
+  // Derive text query and tag names from the debounced input
+  const { text: debouncedText, tagNames: debouncedTagNames } = parseHashTags(debouncedQuery)
+  // Also derive from the live (non-debounced) query for chip display
+  const { tagNames: liveTagNames } = parseHashTags(searchQuery)
+
+  // Tag IDs resolved from parsed #tagname patterns using partial (contains) matching
+  // so that typing #wo live-matches tags like "work", "writing", etc.
+  const parsedTagIds = tags
+    .filter((t) => debouncedTagNames.some((p) => t.tag_name.includes(p)))
+    .map((t) => t.tag_id)
+
+  // Tag-only mode: no text query but the user has typed at least one #pattern
+  const isTagFilterActive = debouncedTagNames.length > 0 && debouncedText.trim().length === 0
+
+  // Client-side filtered entries for tag-only mode (ANY matching tag).
+  // If the pattern exists but no tag name contains it, returns empty list.
+  const tagFilteredEntries = isTagFilterActive
+    ? (parsedTagIds.length > 0
+        ? entries.filter((e) => parsedTagIds.some((tid) => e.tags?.some((t) => t.tag_id === tid)))
+        : [])
+    : entries
 
   // Run search when debounced query or filters change
   useEffect(() => {
-    const trimmed = debouncedQuery.trim()
-    if (trimmed.length === 0) {
+    if (debouncedText.length === 0) {
       setSearchResults([])
       setSearchFetched(false)
       setQueryTooLong(false)
       return
     }
-    if (trimmed.length > 200) {
+    if (debouncedText.length > 200) {
       setQueryTooLong(true)
       return
     }
     setQueryTooLong(false)
-    runSearch(trimmed)
+    const tagIds = tags
+      .filter((t) => debouncedTagNames.some((p) => t.tag_name.includes(p)))
+      .map((t) => t.tag_id)
+    runSearch(debouncedText, tagIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, fromDate, toDate, pinnedOnly, selectedTagIds])
+  }, [debouncedQuery, fromDate, toDate, pinnedOnly])
 
-  async function runSearch(q: string) {
-    // Cancel any in-flight request so stale results never overwrite newer ones
+  async function runSearch(q: string, tagIds: string[] = []) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -203,7 +253,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
       if (fromDate) url.searchParams.set('from', fromDate)
       if (toDate) url.searchParams.set('to', toDate)
       if (pinnedOnly) url.searchParams.set('pinned', 'true')
-      if (selectedTagIds.length > 0) url.searchParams.set('tagIds', selectedTagIds.join(','))
+      if (tagIds.length > 0) url.searchParams.set('tagIds', tagIds.join(','))
 
       const res = await fetch(url.toString(), { signal: controller.signal })
 
@@ -234,15 +284,8 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     setFromDate('')
     setToDate('')
     setPinnedOnly(false)
-    setSelectedTagIds([])
     setSearchResults([])
     setSearchFetched(false)
-  }
-
-  function toggleTag(tagId: string) {
-    setSelectedTagIds((ids) =>
-      ids.includes(tagId) ? ids.filter((id) => id !== tagId) : [...ids, tagId],
-    )
   }
 
   async function handleNewEntry() {
@@ -264,8 +307,9 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     router.push(`/journals/${journal.journal_id}/entries/${result.entry_id}`)
   }
 
-  const isSearchActive = debouncedQuery.trim().length > 0
-  const hasActiveFilters = fromDate || toDate || pinnedOnly || selectedTagIds.length > 0
+  const isTextSearchActive = debouncedText.trim().length > 0
+  const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly)
+  const hasActiveFilters = hasDatePinFilters || liveTagNames.length > 0
   const showSearchEmpty = searchFetched && searchResults.length === 0 && !isSearching
 
   return (
@@ -275,9 +319,9 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         className="rounded-2xl p-7 mb-7 border"
         style={{
           background: isDark
-            ? `linear-gradient(160deg, ${accent}12 0%, ${accent}05 100%)`
-            : `linear-gradient(160deg, ${accent}18 0%, ${accent}05 100%)`,
-          borderColor: `${accent}25`,
+            ? `linear-gradient(160deg, ${hexAlpha(accent, '12')} 0%, ${hexAlpha(accent, '05')} 100%)`
+            : `linear-gradient(160deg, ${hexAlpha(accent, '18')} 0%, ${hexAlpha(accent, '05')} 100%)`,
+          borderColor: hexAlpha(accent, '25'),
         }}
       >
         <div className="flex items-start gap-5">
@@ -286,7 +330,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             className="flex items-center justify-center w-[68px] h-[68px] rounded-[18px] text-[34px] shrink-0"
             style={{
               background: emojiBg,
-              boxShadow: `0 6px 20px ${accent}30`,
+              boxShadow: `0 6px 20px ${hexAlpha(accent, '30')}`,
             }}
           >
             {journal.icon}
@@ -314,7 +358,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                 className="flex items-center gap-2 px-5 py-[10px] rounded-[10px] text-white text-[13px] font-semibold shrink-0 disabled:opacity-70 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
                 style={{
                   background: accent,
-                  boxShadow: `0 4px 14px ${accent}45`,
+                  boxShadow: `0 4px 14px ${hexAlpha(accent, '45')}`,
                 }}
               >
                 {isCreating ? (
@@ -352,8 +396,15 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             onChange={(e) => {
               setSearchQuery(e.target.value)
               if (e.target.value.length <= 200) setQueryTooLong(false)
+              const { text } = parseHashTags(e.target.value)
+              if (text.length === 0) {
+                abortRef.current?.abort()
+                setSearchResults([])
+                setSearchFetched(false)
+                setIsSearching(false)
+              }
             }}
-            placeholder="Search entries in this journal…"
+            placeholder="Search entries… use #tagname to filter by tag"
             className="flex-1 text-sm bg-transparent text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none"
           />
           {searchQuery && (
@@ -373,7 +424,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </p>
         )}
 
-        {/* Filter row */}
+        {/* Filter row — date and pinned only */}
         <div className="flex items-center flex-wrap gap-2">
           {/* From date */}
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
@@ -408,56 +459,6 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           >
             Pinned only
           </button>
-
-          {/* Tags dropdown */}
-          <div ref={tagsDropdownRef} className="relative">
-            <button
-              onClick={() => setTagsDropdownOpen((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
-                selectedTagIds.length > 0
-                  ? 'bg-[#1976D2] text-white border-[#1976D2]'
-                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
-              }`}
-            >
-              Tags
-              {selectedTagIds.length > 0 && (
-                <span className="text-[10px] opacity-80">({selectedTagIds.length})</span>
-              )}
-              <ChevronDown size={12} />
-            </button>
-
-            {tagsDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1 z-10 w-52 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 max-h-48 overflow-y-auto">
-                {tagsError ? (
-                  <p className="px-3 py-2 text-xs text-red-500 dark:text-red-400">
-                    Could not load tags
-                  </p>
-                ) : tags.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-[#9E9E9E]">No tags yet</p>
-                ) : (
-                  tags.map((tag) => (
-                    <label
-                      key={tag.tag_id}
-                      className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-muted)] transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedTagIds.includes(tag.tag_id)}
-                        onChange={() => toggleTag(tag.tag_id)}
-                        className="rounded"
-                      />
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.tag_name}
-                      </span>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Active filter chips */}
@@ -470,23 +471,19 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             {pinnedOnly && (
               <FilterChip label="Pinned" onRemove={() => setPinnedOnly(false)} />
             )}
-            {selectedTagIds.map((tagId) => {
-              const tag = tags.find((t) => t.tag_id === tagId)
-              if (!tag) return null
-              return (
-                <FilterChip
-                  key={tagId}
-                  label={`Tag: ${tag.tag_name}`}
-                  onRemove={() => setSelectedTagIds((ids) => ids.filter((id) => id !== tagId))}
-                />
-              )
-            })}
+            {liveTagNames.map((name) => (
+              <FilterChip
+                key={name}
+                label={`#${name}`}
+                onRemove={() => setSearchQuery((prev) => removeHashTag(prev, name))}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {/* Search results */}
-      {isSearchActive && (
+      {/* Full-text search results */}
+      {isTextSearchActive && (
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2
@@ -553,43 +550,58 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         </div>
       )}
 
-      {/* Normal entry list — shown when not searching */}
-      {!isSearchActive && (
+      {/* Normal / tag-filtered entry list */}
+      {!isTextSearchActive && (
         <>
           <div className="flex items-center justify-between mb-4">
             <h2
               className="text-base font-bold text-[var(--text-primary)]"
               style={{ letterSpacing: '-0.2px' }}
             >
-              All Entries
+              {isTagFilterActive ? 'Filtered Entries' : 'All Entries'}
             </h2>
             <span className="text-xs text-[var(--text-muted)]">
-              {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+              {tagFilteredEntries.length} {tagFilteredEntries.length === 1 ? 'entry' : 'entries'}
             </span>
           </div>
 
-          {entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <BookOpen className="w-12 h-12 text-[#E0E0E0] dark:text-[#3A3A3A] mb-4" />
-              <h2 className="text-lg font-medium text-[var(--text-secondary)] mb-1">
-                No entries yet
-              </h2>
-              <p className="text-sm text-[var(--text-muted)] mb-6">
-                Start writing your first entry.
-              </p>
-              <button
-                onClick={handleNewEntry}
-                disabled={isCreating}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-70"
-                style={{ background: accent }}
-              >
-                {isCreating && <Loader2 size={15} className="animate-spin" />}
-                {isCreating ? 'Creating…' : 'Create your first entry'}
-              </button>
-            </div>
+          {tagFilteredEntries.length === 0 ? (
+            isTagFilterActive ? (
+              <div className="flex flex-col items-center gap-3 py-16 text-center">
+                <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A]" />
+                <p className="text-base text-[var(--text-secondary)]">
+                  No entries with {liveTagNames.map((n) => `#${n}`).join(', ')}
+                </p>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-sm text-[#1976D2] hover:underline"
+                >
+                  Clear filter
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-24 text-center">
+                <BookOpen className="w-12 h-12 text-[#E0E0E0] dark:text-[#3A3A3A] mb-4" />
+                <h2 className="text-lg font-medium text-[var(--text-secondary)] mb-1">
+                  No entries yet
+                </h2>
+                <p className="text-sm text-[var(--text-muted)] mb-6">
+                  Start writing your first entry.
+                </p>
+                <button
+                  onClick={handleNewEntry}
+                  disabled={isCreating}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-70"
+                  style={{ background: accent }}
+                >
+                  {isCreating && <Loader2 size={15} className="animate-spin" />}
+                  {isCreating ? 'Creating…' : 'Create your first entry'}
+                </button>
+              </div>
+            )
           ) : (
             <div className="flex flex-col gap-3">
-              {entries.map((entry, index) => (
+              {tagFilteredEntries.map((entry, index) => (
                 <EntryCard
                   key={entry.entry_id}
                   entry={entry}
@@ -597,6 +609,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                   accentColor={accent}
                   isLatest={index === 0}
                   onDelete={setDeleteTarget}
+                  tags={entry.tags}
                 />
               ))}
             </div>

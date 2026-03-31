@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, SearchX, X, ChevronDown, BookOpen, FileText } from 'lucide-react'
+import { Search, SearchX, X, BookOpen, FileText } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { useUIStore } from '@/store/useUIStore'
 import { useDebounce } from '@/hooks/useDebounce'
 import Spinner from '@/components/ui/Spinner'
+import TagChip from '@/components/ui/TagChip'
 
 interface Tag {
   tag_id: string
@@ -25,6 +26,12 @@ interface JournalResult {
   is_favorite: boolean
 }
 
+interface EntryTag {
+  tag_id: string
+  tag_name: string
+  color: string
+}
+
 interface EntryResult {
   entry_id: string
   title: string | null
@@ -36,6 +43,7 @@ interface EntryResult {
   is_pinned: boolean
   snippet: string
   matched_terms: string[]
+  tags?: EntryTag[]
 }
 
 // Highlight text segments by matched terms using String.indexOf (no regex with user input)
@@ -48,7 +56,6 @@ function HighlightedText({
 }): React.ReactElement {
   if (!terms.length) return <>{text}</>
 
-  // Collect all match positions
   const matches: { start: number; end: number }[] = []
   const lowerText = text.toLowerCase()
 
@@ -66,7 +73,6 @@ function HighlightedText({
 
   if (!matches.length) return <>{text}</>
 
-  // Sort and merge overlapping ranges
   matches.sort((a, b) => a.start - b.start)
   const merged: { start: number; end: number }[] = []
   for (const m of matches) {
@@ -78,7 +84,6 @@ function HighlightedText({
     }
   }
 
-  // Build React node array
   const nodes: React.ReactNode[] = []
   let cursor = 0
   for (let i = 0; i < merged.length; i++) {
@@ -111,6 +116,28 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   )
 }
 
+// Parse #tagname tokens out of a query string
+function parseHashTags(query: string): { text: string; tagNames: string[] } {
+  const tagNames: string[] = []
+  const text = query
+    .replace(/#([a-z0-9-]+)/gi, (_, name: string) => {
+      tagNames.push(name.toLowerCase())
+      return ''
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { text, tagNames }
+}
+
+// Remove a specific #tagname token from a query string
+function removeHashTag(query: string, tagName: string): string {
+  return query
+    .split(/\s+/)
+    .filter((token) => token.toLowerCase() !== `#${tagName.toLowerCase()}`)
+    .join(' ')
+    .trim()
+}
+
 export default function SearchOverlay() {
   const router = useRouter()
   const { isSearchOpen, openSearch, closeSearch } = useUIStore()
@@ -119,11 +146,10 @@ export default function SearchOverlay() {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [pinnedOnly, setPinnedOnly] = useState(false)
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
 
+  // Tags loaded for name→ID lookup
   const [tags, setTags] = useState<Tag[]>([])
-  const [tagsError, setTagsError] = useState(false)
-  const [tagsDropdownOpen, setTagsDropdownOpen] = useState(false)
+  const tagsLoadedRef = useRef(false)
 
   const [journals, setJournals] = useState<JournalResult[]>([])
   const [entries, setEntries] = useState<EntryResult[]>([])
@@ -133,14 +159,19 @@ export default function SearchOverlay() {
   const [hasFetched, setHasFetched] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
-  const tagsDropdownRef = useRef<HTMLDivElement>(null)
   const resultRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const tagsLoadedRef = useRef(false)
-
-  const debouncedQuery = useDebounce(query, 150)
   const abortRef = useRef<AbortController | null>(null)
 
+  const debouncedQuery = useDebounce(query, 150)
+
   const totalItems = journals.length + entries.length
+
+  // Derive text + tag parts from current (live) query for chip display
+  const { text: liveText, tagNames: liveTagNames } = parseHashTags(query)
+  // And from debounced query for triggering search
+  const { text: debouncedText, tagNames: debouncedTagNames } = parseHashTags(debouncedQuery)
+
+  const hasActiveFilters = !!(fromDate || toDate || pinnedOnly || liveTagNames.length > 0)
 
   // Global Cmd+K / Ctrl+K listener — always active
   useEffect(() => {
@@ -161,21 +192,12 @@ export default function SearchOverlay() {
     setTimeout(() => inputRef.current?.focus(), 0)
     if (!tagsLoadedRef.current) {
       tagsLoadedRef.current = true
-      fetchTags()
+      fetch('/api/tags')
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data: Tag[]) => setTags(data))
+        .catch(() => {/* graceful degradation */})
     }
   }, [isSearchOpen])
-
-  // Close tags dropdown on outside click
-  useEffect(() => {
-    if (!tagsDropdownOpen) return
-    function handleClick(e: MouseEvent) {
-      if (tagsDropdownRef.current && !tagsDropdownRef.current.contains(e.target as Node)) {
-        setTagsDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [tagsDropdownOpen])
 
   // Scroll selected result into view
   useEffect(() => {
@@ -184,40 +206,34 @@ export default function SearchOverlay() {
     }
   }, [selectedIndex])
 
+  // Resolve tag IDs from debounced tag patterns using partial (contains) matching
+  const debouncedTagIds = tags
+    .filter((t) => debouncedTagNames.some((p) => t.tag_name.includes(p)))
+    .map((t) => t.tag_id)
+
   // Run search when debounced query or filters change
   useEffect(() => {
     if (!isSearchOpen) return
 
-    const trimmed = debouncedQuery.trim()
-    if (trimmed.length === 0) {
+    if (debouncedText.length > 200) {
+      setQueryTooLong(true)
+      return
+    }
+
+    // Need at least text or a resolved tag to search
+    if (debouncedText.length === 0 && debouncedTagIds.length === 0) {
       setJournals([])
       setEntries([])
       setHasFetched(false)
       return
     }
-    if (trimmed.length > 200) {
-      setQueryTooLong(true)
-      return
-    }
 
     setQueryTooLong(false)
-    runSearch(trimmed)
+    runSearch(debouncedText, debouncedTagIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, fromDate, toDate, pinnedOnly, selectedTagIds, isSearchOpen])
+  }, [debouncedQuery, fromDate, toDate, pinnedOnly, isSearchOpen])
 
-  async function fetchTags() {
-    try {
-      const res = await fetch('/api/tags')
-      if (!res.ok) throw new Error('Failed')
-      const data = (await res.json()) as Tag[]
-      setTags(data)
-    } catch {
-      setTagsError(true)
-    }
-  }
-
-  async function runSearch(q: string) {
-    // Cancel any in-flight request so stale results never overwrite newer ones
+  async function runSearch(q: string, tagIds: string[] = []) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -230,7 +246,7 @@ export default function SearchOverlay() {
       if (fromDate) url.searchParams.set('from', fromDate)
       if (toDate) url.searchParams.set('to', toDate)
       if (pinnedOnly) url.searchParams.set('pinned', 'true')
-      if (selectedTagIds.length > 0) url.searchParams.set('tagIds', selectedTagIds.join(','))
+      if (tagIds.length > 0) url.searchParams.set('tagIds', tagIds.join(','))
 
       const res = await fetch(url.toString(), { signal: controller.signal })
 
@@ -271,13 +287,11 @@ export default function SearchOverlay() {
     setFromDate('')
     setToDate('')
     setPinnedOnly(false)
-    setSelectedTagIds([])
     setJournals([])
     setEntries([])
     setHasFetched(false)
     setIsSearching(false)
     setQueryTooLong(false)
-    setTagsDropdownOpen(false)
     setSelectedIndex(-1)
   }
 
@@ -322,17 +336,9 @@ export default function SearchOverlay() {
     }
   }
 
-  function toggleTag(tagId: string) {
-    setSelectedTagIds((ids) =>
-      ids.includes(tagId) ? ids.filter((id) => id !== tagId) : [...ids, tagId],
-    )
-  }
-
-  const hasActiveFilters = fromDate || toDate || pinnedOnly || selectedTagIds.length > 0
+  // True only when there is genuinely nothing to search (no text, no resolved tags)
+  const showZeroQuery = debouncedText.trim().length === 0 && debouncedTagIds.length === 0
   const showEmpty = hasFetched && totalItems === 0 && !isSearching
-  const showZeroQuery = debouncedQuery.trim().length === 0
-  const showFiltersWithoutQuery =
-    !showZeroQuery === false && hasActiveFilters && debouncedQuery.trim().length === 0
 
   if (!isSearchOpen) return null
 
@@ -362,7 +368,11 @@ export default function SearchOverlay() {
               const val = e.target.value
               setQuery(val)
               if (val.length <= 200) setQueryTooLong(false)
-              if (val.trim().length === 0) {
+              const { text, tagNames } = parseHashTags(val)
+              const resolvedIds = tags
+                .filter((t) => tagNames.some((p) => t.tag_name.includes(p)))
+                .map((t) => t.tag_id)
+              if (text.trim().length === 0 && resolvedIds.length === 0) {
                 abortRef.current?.abort()
                 setJournals([])
                 setEntries([])
@@ -370,7 +380,7 @@ export default function SearchOverlay() {
                 setIsSearching(false)
               }
             }}
-            placeholder="Search journals, entries, and content…"
+            placeholder="Search journals and entries… use #tag to filter"
             className="flex-1 text-lg bg-transparent text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none"
             autoFocus
           />
@@ -386,7 +396,7 @@ export default function SearchOverlay() {
           </p>
         )}
 
-        {/* Filter row */}
+        {/* Filter row — date and pinned */}
         <div className="flex items-center flex-wrap gap-2 px-4 py-2.5 border-b border-[var(--border)]">
           {/* From date */}
           <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
@@ -421,56 +431,6 @@ export default function SearchOverlay() {
           >
             Pinned only
           </button>
-
-          {/* Tags dropdown */}
-          <div ref={tagsDropdownRef} className="relative">
-            <button
-              onClick={() => setTagsDropdownOpen((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
-                selectedTagIds.length > 0
-                  ? 'bg-[#1976D2] text-white border-[#1976D2]'
-                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
-              }`}
-            >
-              Tags
-              {selectedTagIds.length > 0 && (
-                <span className="text-[10px] opacity-80">({selectedTagIds.length})</span>
-              )}
-              <ChevronDown size={12} />
-            </button>
-
-            {tagsDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1 z-10 w-52 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 max-h-48 overflow-y-auto">
-                {tagsError ? (
-                  <p className="px-3 py-2 text-xs text-red-500 dark:text-red-400">
-                    Could not load tags
-                  </p>
-                ) : tags.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-[#9E9E9E]">No tags yet</p>
-                ) : (
-                  tags.map((tag) => (
-                    <label
-                      key={tag.tag_id}
-                      className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[var(--bg-muted)] transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedTagIds.includes(tag.tag_id)}
-                        onChange={() => toggleTag(tag.tag_id)}
-                        className="rounded"
-                      />
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
-                        style={{ backgroundColor: tag.color }}
-                      >
-                        {tag.tag_name}
-                      </span>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Active filter chips */}
@@ -483,31 +443,27 @@ export default function SearchOverlay() {
             {pinnedOnly && (
               <FilterChip label="Pinned" onRemove={() => setPinnedOnly(false)} />
             )}
-            {selectedTagIds.map((tagId) => {
-              const tag = tags.find((t) => t.tag_id === tagId)
-              if (!tag) return null
-              return (
-                <FilterChip
-                  key={tagId}
-                  label={`Tag: ${tag.tag_name}`}
-                  onRemove={() => setSelectedTagIds((ids) => ids.filter((id) => id !== tagId))}
-                />
-              )
-            })}
+            {liveTagNames.map((name) => (
+              <FilterChip
+                key={name}
+                label={`#${name}`}
+                onRemove={() => setQuery((prev) => removeHashTag(prev, name))}
+              />
+            ))}
           </div>
         )}
 
         {/* Results area */}
         <div className="flex-1 overflow-y-auto">
-          {/* Zero-query state */}
+          {/* Default prompt — nothing typed yet */}
           {showZeroQuery && !hasActiveFilters && (
             <p className="text-center text-sm text-[var(--text-muted)] py-10">
               Search journals, entries, and content…
             </p>
           )}
 
-          {/* Filters active but no query */}
-          {(showZeroQuery || showFiltersWithoutQuery) && hasActiveFilters && debouncedQuery.trim().length === 0 && (
+          {/* Date/pinned filters active but no text and no tag pattern */}
+          {showZeroQuery && hasActiveFilters && (
             <p className="text-center text-sm text-[var(--text-muted)] py-10">
               Type a search term to apply filters…
             </p>
@@ -521,10 +477,14 @@ export default function SearchOverlay() {
           )}
 
           {/* Empty results */}
-          {showEmpty && debouncedQuery.trim().length > 0 && (
+          {showEmpty && (
             <div className="flex flex-col items-center gap-2 py-10 text-[var(--text-muted)]">
               <SearchX size={32} />
-              <p className="text-sm">No results for &ldquo;{debouncedQuery}&rdquo;</p>
+              <p className="text-sm">
+                {debouncedText.length > 0
+                  ? `No results for \u201c${debouncedText}\u201d`
+                  : `No entries tagged ${debouncedTagNames.map((n) => `#${n}`).join(', ')}`}
+              </p>
             </div>
           )}
 
@@ -640,6 +600,20 @@ export default function SearchOverlay() {
                                 terms={entry.matched_terms}
                               />
                             </p>
+                          )}
+
+                          {/* Tags */}
+                          {entry.tags && entry.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {entry.tags.map((tag) => (
+                                <TagChip
+                                  key={tag.tag_id}
+                                  tagName={tag.tag_name}
+                                  color={tag.color}
+                                  size="sm"
+                                />
+                              ))}
+                            </div>
                           )}
                         </button>
                       </li>

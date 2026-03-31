@@ -77,7 +77,7 @@ export async function updateEntry(
       ...(parsed.data.title !== undefined && { title: parsed.data.title }),
       ...(parsed.data.entry_date !== undefined && { entry_date: parsed.data.entry_date }),
       ...(parsed.data.is_pinned !== undefined && { is_pinned: parsed.data.is_pinned }),
-      content: parsed.data.content as Json,
+      ...(parsed.data.content != null && { content: parsed.data.content as Json }),
     })
     .eq('entry_id', id)
     .select('updated_at')
