@@ -43,9 +43,9 @@ export default function DeleteJournalModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm border border-[#E5E7EB] dark:border-slate-700">
+      <div className="bg-[var(--bg-surface)] rounded-xl shadow-xl w-full max-w-sm border border-[var(--border)]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB] dark:border-slate-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
           <h2 className="font-semibold text-gray-900 dark:text-white">Delete Journal</h2>
           <button
             onClick={onClose}

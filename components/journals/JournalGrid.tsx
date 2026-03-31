@@ -51,15 +51,15 @@ export default function JournalGrid({ journals }: JournalGridProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#212121] dark:text-[#F5F5F5]">Journals</h1>
-          <p className="text-sm text-[#757575] dark:text-[#9E9E9E] mt-0.5">
+          <h1 className="text-2xl font-semibold text-[var(--text-primary)]">Journals</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
             {journals.length} journal{journals.length !== 1 ? 's' : ''}
           </p>
         </div>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortOption)}
-          className="text-sm border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-lg px-3 py-1.5 bg-white dark:bg-[#1E1E1E] text-[#212121] dark:text-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-[#1976D2]"
+          className="text-sm border border-[var(--border)] rounded-lg px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[#1976D2]"
         >
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -73,10 +73,10 @@ export default function JournalGrid({ journals }: JournalGridProps) {
       {sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <BookOpen className="w-12 h-12 text-[#E0E0E0] dark:text-[#3A3A3A] mb-4" />
-          <h2 className="text-lg font-medium text-[#757575] dark:text-[#9E9E9E] mb-1">
+          <h2 className="text-lg font-medium text-[var(--text-secondary)] mb-1">
             No journals yet
           </h2>
-          <p className="text-sm text-[#9E9E9E] dark:text-[#757575] mb-6">
+          <p className="text-sm text-[var(--text-muted)] mb-6">
             Start organising your thoughts.
           </p>
           <button

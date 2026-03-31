@@ -59,7 +59,7 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
 
   return (
     <div
-      className="relative flex items-stretch bg-white dark:bg-[#1E1E1E] rounded-xl cursor-pointer border border-[#E0E0E0] dark:border-[#3A3A3A] transition-transform hover:translate-x-0.5 overflow-hidden"
+      className="relative flex items-stretch bg-[var(--bg-surface)] rounded-xl cursor-pointer border border-[var(--border)] transition-transform hover:translate-x-0.5 overflow-hidden"
       onClick={() => router.push(`/journals/${journalId}/entries/${entry.entry_id}`)}
     >
       {/* Accent left bar */}
@@ -76,7 +76,7 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
         {/* Row 1: title + badges + menu */}
         <div className="flex items-center gap-2 mb-1.5">
           <h3
-            className="text-[15px] font-semibold text-[#212121] dark:text-[#F5F5F5] truncate flex-1"
+            className="text-[15px] font-semibold text-[var(--text-primary)] truncate flex-1"
             style={{ letterSpacing: '-0.2px' }}
           >
             {entry.title || 'Untitled'}
@@ -105,16 +105,16 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
               className="p-1 rounded hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] transition-colors"
               aria-label="More options"
             >
-              <MoreHorizontal size={16} className="text-[#9E9E9E] dark:text-[#757575]" />
+              <MoreHorizontal size={16} className="text-[var(--text-muted)]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-[#1E1E1E] border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-xl shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-36 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg z-10 py-1">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     handlePinToggle()
                   }}
-                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   <Pin
                     size={13}
@@ -127,7 +127,7 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
                     setMenuOpen(false)
                     router.push(`/journals/${journalId}/entries/${entry.entry_id}`)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   Edit
                 </button>
@@ -136,7 +136,7 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
                     setMenuOpen(false)
                     onDelete(entry)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   Delete
                 </button>
@@ -146,7 +146,7 @@ export default function EntryCard({ entry, journalId, accentColor, isLatest, onD
         </div>
 
         {/* Row 2: date + read time */}
-        <div className="flex items-center gap-1 text-xs text-[#9E9E9E] dark:text-[#757575] mb-2">
+        <div className="flex items-center gap-1 text-xs text-[var(--text-muted)] mb-2">
           <Calendar size={10} />
           <span>{formattedDate}</span>
           <span>·</span>

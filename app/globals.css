@@ -4,10 +4,24 @@
 
 :root {
   --brand: #1976D2;
+  --bg-page: #F0EDE8;
+  --bg-surface: #FAF8F5;
+  --bg-muted: #EAE6E0;
+  --border: #D4D0CA;
+  --text-primary: #212121;
+  --text-secondary: #757575;
+  --text-muted: #9E9E9E;
 }
 
 .dark {
   --brand: #1976D2;
+  --bg-page: #121212;
+  --bg-surface: #1E1E1E;
+  --bg-muted: #2C2C2C;
+  --border: #3A3A3A;
+  --text-primary: #F5F5F5;
+  --text-secondary: #9E9E9E;
+  --text-muted: #757575;
 }
 
 /* ─── Tiptap / ProseMirror: content area ───────────────────────────────────── */

@@ -87,7 +87,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       }}
     >
       <div
-        className="bg-white dark:bg-[#1E1E1E] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif]"
+        className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif]"
         style={{
           boxShadow: isDark
             ? '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)'
@@ -95,7 +95,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
         }}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 pt-[22px] pb-[18px] border-b border-[#E0E0E0] dark:border-[#3A3A3A]">
+        <div className="flex items-center gap-3 px-6 pt-[22px] pb-[18px] border-b border-[var(--border)]">
           <div
             className="flex items-center justify-center w-9 h-9 rounded-[10px] shrink-0"
             style={{
@@ -107,21 +107,21 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
           </div>
           <div className="flex-1 min-w-0">
             <h2
-              className="text-base font-bold text-[#212121] dark:text-[#F5F5F5] leading-tight"
+              className="text-base font-bold text-[var(--text-primary)] leading-tight"
               style={{ letterSpacing: '-0.3px' }}
             >
               {isEdit ? 'Edit Journal' : 'Create New Journal'}
             </h2>
-            <p className="text-xs text-[#9E9E9E] dark:text-[#757575]">
+            <p className="text-xs text-[var(--text-muted)]">
               A journal holds your entries &amp; notes
             </p>
           </div>
           <button
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] hover:bg-[#E0E0E0] dark:hover:bg-[#3A3A3A] transition-colors shrink-0"
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] hover:bg-[#E0E0E0] dark:hover:bg-[#3A3A3A] transition-colors shrink-0"
             aria-label="Close"
           >
-            <X size={14} className="text-[#757575] dark:text-[#9E9E9E]" />
+            <X size={14} className="text-[var(--text-secondary)]" />
           </button>
         </div>
 
@@ -133,7 +133,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
             <div className="flex gap-3">
               {/* Icon picker */}
               <div className="shrink-0">
-                <p className="text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-2" style={{ letterSpacing: '0.5px' }}>
+                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2" style={{ letterSpacing: '0.5px' }}>
                   Icon
                 </p>
                 <div className="flex flex-wrap gap-1.5" style={{ maxWidth: 184 }}>
@@ -160,7 +160,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
 
               {/* Color picker */}
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-2 flex items-center gap-1" style={{ letterSpacing: '0.5px' }}>
+                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1" style={{ letterSpacing: '0.5px' }}>
                   <Palette size={11} />
                   Cover Color
                 </p>
@@ -169,13 +169,13 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                   <button
                     type="button"
                     onClick={() => setColorOpen((prev) => !prev)}
-                    className="w-full flex items-center gap-2 px-3 py-[9px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] hover:bg-[#E5E5E5] dark:hover:bg-[#404040] transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-[9px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] hover:bg-[#E5E5E5] dark:hover:bg-[#404040] transition-colors"
                   >
                     <span
                       className="inline-block w-[18px] h-[18px] rounded-full shrink-0"
                       style={{ background: selectedColor }}
                     />
-                    <span className="flex-1 text-left text-[#212121] dark:text-[#F5F5F5] text-[13px]">
+                    <span className="flex-1 text-left text-[var(--text-primary)] text-[13px]">
                       {colorLabel}
                     </span>
                     <ChevronDown
@@ -186,7 +186,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
 
                   {/* Dropdown */}
                   {colorOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 p-2 rounded-[10px] bg-white dark:bg-[#2C2C2C] border border-[#E0E0E0] dark:border-[#3A3A3A] z-10 shadow-lg">
+                    <div className="absolute top-full left-0 right-0 mt-1 p-2 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border)] z-10 shadow-lg">
                       <div className="grid grid-cols-4 gap-1.5">
                         {COLOR_DEFS.map((c) => (
                           <button
@@ -202,7 +202,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                               className="inline-block w-[22px] h-[22px] rounded-full"
                               style={{ background: c.value }}
                             />
-                            <span className="text-[9px] text-[#9E9E9E] dark:text-[#757575]">
+                            <span className="text-[9px] text-[var(--text-muted)]">
                               {c.label}
                             </span>
                           </button>
@@ -216,7 +216,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
 
             {/* Preview card */}
             <div
-              className="flex items-center gap-4 p-4 rounded-xl border border-[#E0E0E0] dark:border-[#3A3A3A]"
+              className="flex items-center gap-4 p-4 rounded-xl border border-[var(--border)]"
               style={{ background: isDark ? '#2A2A2A' : '#F8F9FA' }}
             >
               {/* Book thumbnail */}
@@ -257,7 +257,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
             {/* Journal name */}
             <div>
               <label
-                className="block text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-1.5"
+                className="block text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-1.5"
                 style={{ letterSpacing: '0.5px' }}
               >
                 Journal Name <span className="text-red-500 normal-case font-normal">*</span>
@@ -265,7 +265,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               <input
                 {...register('title')}
                 placeholder="e.g. Personal Journal, Work Notes…"
-                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] text-[14px] text-[#212121] dark:text-[#F5F5F5] placeholder-[#9E9E9E] focus:outline-none transition-colors"
+                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] text-[14px] text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none transition-colors"
                 style={{
                   border: titleValue
                     ? `1px solid ${selectedColor}`
@@ -280,7 +280,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
             {/* Description */}
             <div>
               <label
-                className="block text-[11px] font-semibold text-[#9E9E9E] dark:text-[#757575] uppercase mb-1.5"
+                className="block text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-1.5"
                 style={{ letterSpacing: '0.5px' }}
               >
                 Description{' '}
@@ -290,7 +290,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                 {...register('description')}
                 rows={2}
                 placeholder="What will you write about in this journal?"
-                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] text-[13px] text-[#212121] dark:text-[#F5F5F5] placeholder-[#9E9E9E] focus:outline-none resize-none"
+                className="w-full px-[14px] py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] text-[13px] text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none resize-none"
                 style={{ lineHeight: '1.55' }}
               />
               {errors.description && (
@@ -300,11 +300,11 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
           </div>
 
           {/* Footer */}
-          <div className="flex gap-[10px] px-6 pt-4 pb-[22px] border-t border-[#E0E0E0] dark:border-[#3A3A3A]">
+          <div className="flex gap-[10px] px-6 pt-4 pb-[22px] border-t border-[var(--border)]">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-[11px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A] text-[14px] font-medium text-[#212121] dark:text-[#F5F5F5] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
+              className="flex-1 px-4 py-[11px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] text-[14px] font-medium text-[var(--text-primary)] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
             >
               Cancel
             </button>

@@ -77,11 +77,11 @@ export default function InactivityModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-sm mx-4 bg-white dark:bg-[#1E1E1E] rounded-xl shadow-lg border border-[#E0E0E0] dark:border-[#3A3A3A] p-6">
+      <div className="w-full max-w-sm mx-4 bg-[var(--bg-surface)] rounded-xl shadow-lg border border-[var(--border)] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
           Still there?
         </h2>
-        <p className="text-sm text-gray-500 dark:text-[#9E9E9E] mb-6">
+        <p className="text-sm text-[var(--text-secondary)] mb-6">
           You&apos;ve been inactive for 30 minutes. You&apos;ll be logged out in{' '}
           <span className="font-semibold text-gray-900 dark:text-white">{countdown}s</span>.
         </p>
@@ -94,7 +94,7 @@ export default function InactivityModal() {
           </button>
           <button
             onClick={handleLogout}
-            className="flex-1 py-2.5 border border-[#E0E0E0] dark:border-[#3A3A3A] text-gray-700 dark:text-[#BDBDBD] rounded-lg font-medium text-sm hover:bg-[#F5F5F5] dark:hover:bg-[#2C2C2C] transition-colors"
+            className="flex-1 py-2.5 border border-[var(--border)] text-gray-700 dark:text-[#BDBDBD] rounded-lg font-medium text-sm hover:bg-[var(--bg-muted)] transition-colors"
           >
             Log out
           </button>

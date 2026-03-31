@@ -57,7 +57,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
   return (
     <div
-      className="relative bg-white dark:bg-[#1E1E1E] rounded-[14px] overflow-hidden cursor-pointer border border-[#E0E0E0] dark:border-[#3A3A3A] transition-transform hover:-translate-y-0.5"
+      className="relative bg-[var(--bg-surface)] rounded-[14px] overflow-hidden cursor-pointer border border-[var(--border)] transition-transform hover:-translate-y-0.5"
       style={{
         boxShadow: isDark
           ? undefined
@@ -83,13 +83,13 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           {/* Title + description */}
           <div className="flex-1 min-w-0 pt-1">
             <h3
-              className="text-[15px] font-bold text-[#212121] dark:text-[#F5F5F5] truncate"
+              className="text-[15px] font-bold text-[var(--text-primary)] truncate"
               style={{ letterSpacing: '-0.3px' }}
             >
               {journal.title}
             </h3>
             {journal.description && (
-              <p className="text-xs text-[#9E9E9E] dark:text-[#757575] truncate mt-0.5">
+              <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">
                 {journal.description}
               </p>
             )}
@@ -106,16 +106,16 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
               className="p-1.5 rounded-lg hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] transition-colors"
               aria-label="More options"
             >
-              <MoreHorizontal size={16} className="text-[#9E9E9E] dark:text-[#757575]" />
+              <MoreHorizontal size={16} className="text-[var(--text-muted)]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1E1E1E] border border-[#E0E0E0] dark:border-[#3A3A3A] rounded-xl shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg z-10 py-1">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     handleFavToggle()
                   }}
-                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   <Star
                     size={14}
@@ -128,7 +128,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
                     setMenuOpen(false)
                     onEdit()
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-[#212121] dark:text-[#F5F5F5] hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   Edit
                 </button>
@@ -137,7 +137,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
                     setMenuOpen(false)
                     onDelete()
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[#FAFAFA] dark:hover:bg-[#2C2C2C] transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   Delete
                 </button>
@@ -154,7 +154,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           >
             {journal.entry_count} {journal.entry_count === 1 ? 'entry' : 'entries'}
           </span>
-          <span className="flex items-center gap-1 text-xs text-[#9E9E9E] dark:text-[#757575]">
+          <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
             <Calendar size={11} />
             {formattedDate}
           </span>

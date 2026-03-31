@@ -101,7 +101,7 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Editor top bar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-[#E5E7EB] dark:border-slate-700 bg-white dark:bg-[#0F172A] shrink-0">
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-[var(--bg-page)] shrink-0">
         <button
           onClick={() => router.push(`/journals/${journal.journal_id}`)}
           className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-gray-500 dark:text-slate-400"
@@ -140,7 +140,7 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
               <MoreHorizontal className="w-4 h-4 text-gray-400 dark:text-slate-500" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-36 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-lg z-10 py-1">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
@@ -174,7 +174,7 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
             type="date"
             value={entryDate}
             onChange={(e) => setEntryDate(e.target.value)}
-            className="text-sm text-gray-500 dark:text-slate-400 bg-transparent border border-[#E5E7EB] dark:border-slate-700 rounded-lg px-3 py-1.5 mb-8 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
+            className="text-sm text-gray-500 dark:text-slate-400 bg-transparent border border-[var(--border)] rounded-lg px-3 py-1.5 mb-8 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
           />
 
           {/* Tiptap rich-text editor */}
@@ -185,7 +185,7 @@ export default function EntryEditor({ entry, journal }: EntryEditorProps) {
           />
 
           {/* Tags placeholder */}
-          <div className="mt-8 pt-4 border-t border-[#E5E7EB] dark:border-slate-700">
+          <div className="mt-8 pt-4 border-t border-[var(--border)]">
             <p className="text-sm text-gray-400 dark:text-slate-500 italic">
               Tags will be added in a later module
             </p>

@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, Plus, ChevronRight, Home } from 'lucide-react'
+import { Menu, Plus, ChevronRight, Home, Search } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 
 const TITLES: Record<string, string> = {
@@ -22,7 +22,7 @@ function getTitle(pathname: string): string {
 export default function TopBar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { toggleSidebar, setCreateJournalOpen } = useUIStore()
+  const { toggleSidebar, setCreateJournalOpen, openSearch } = useUIStore()
 
   const title = getTitle(pathname)
 
@@ -34,11 +34,11 @@ export default function TopBar() {
   }
 
   return (
-    <header className="sticky top-0 z-20 bg-white dark:bg-[#1E1E1E] border-b border-[#E0E0E0] dark:border-[#3A3A3A] flex items-center gap-3 px-4 py-3">
+    <header className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border)] flex items-center gap-3 px-4 py-3">
       {/* Hamburger — mobile only */}
       <button
         onClick={toggleSidebar}
-        className="md:hidden p-2 rounded-lg text-gray-600 dark:text-[#9E9E9E] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+        className="md:hidden p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
         aria-label="Open menu"
       >
         <Menu size={20} />
@@ -46,7 +46,7 @@ export default function TopBar() {
 
       {/* Title + breadcrumb */}
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-[#9E9E9E]">
+        <div className="flex items-center gap-1 text-sm text-[var(--text-secondary)]">
           <Home size={14} className="flex-shrink-0" />
           <ChevronRight size={14} className="flex-shrink-0" />
         </div>
@@ -55,6 +55,13 @@ export default function TopBar() {
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={openSearch}
+          className="p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+          aria-label="Search (Ctrl+K)"
+        >
+          <Search size={18} />
+        </button>
         <button
           onClick={handleNewJournal}
           className="flex items-center gap-1.5 px-4 py-2 bg-[#1976D2] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:ring-offset-2 focus-visible:outline-none"

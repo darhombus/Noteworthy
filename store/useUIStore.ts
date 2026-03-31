@@ -6,6 +6,9 @@ interface UIState {
   setSidebarOpen: (open: boolean) => void
   createJournalOpen: boolean
   setCreateJournalOpen: (open: boolean) => void
+  isSearchOpen: boolean
+  openSearch: () => void
+  closeSearch: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -14,4 +17,7 @@ export const useUIStore = create<UIState>((set) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   createJournalOpen: false,
   setCreateJournalOpen: (open) => set({ createJournalOpen: open }),
+  isSearchOpen: false,
+  openSearch: () => set({ isSearchOpen: true }),
+  closeSearch: () => set({ isSearchOpen: false }),
 }))
