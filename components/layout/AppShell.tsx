@@ -1,6 +1,7 @@
 import Sidebar, { type SidebarUser } from './Sidebar'
 import TopBar from './TopBar'
 import InactivityModal from './InactivityModal'
+import SearchOverlay from './SearchOverlay'
 
 interface AppShellProps {
   user: SidebarUser
@@ -9,7 +10,7 @@ interface AppShellProps {
 
 export default function AppShell({ user, children }: AppShellProps) {
   return (
-    <div className="flex h-screen bg-[#FAFAFA] dark:bg-[#121212] overflow-hidden">
+    <div className="flex h-screen bg-[var(--bg-page)] overflow-hidden">
       <Sidebar user={user} />
 
       {/* Main column */}
@@ -25,6 +26,7 @@ export default function AppShell({ user, children }: AppShellProps) {
       </div>
 
       <InactivityModal />
+      <SearchOverlay />
     </div>
   )
 }

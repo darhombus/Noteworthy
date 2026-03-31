@@ -10,7 +10,6 @@ import {
   Trash2,
   Settings,
   X,
-  Search,
   LogOut,
 } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
@@ -67,7 +66,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const navContent = (
     <nav className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-4 py-5 flex items-center justify-between border-b border-gray-200 dark:border-[#3A3A3A]">
+      <div className="px-4 py-5 flex items-center justify-between border-b border-[var(--border)]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center flex-shrink-0">
             <BookOpen size={15} className="text-white" />
@@ -78,19 +77,11 @@ export default function Sidebar({ user }: SidebarProps) {
         </div>
         <button
           onClick={() => setSidebarOpen(false)}
-          className="p-1.5 rounded-lg text-gray-500 dark:text-[#9E9E9E] hover:bg-[#EEEEEE] dark:hover:bg-[#333333] focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
+          className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#333333] focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
           aria-label="Close menu"
         >
           <X size={18} />
         </button>
-      </div>
-
-      {/* Search */}
-      <div className="px-3 py-3">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A]">
-          <Search size={14} className="text-gray-400 dark:text-[#9E9E9E] flex-shrink-0" />
-          <span className="text-sm text-gray-400 dark:text-[#616161]">Search entries...</span>
-        </div>
       </div>
 
       {/* Nav links */}
@@ -119,7 +110,7 @@ export default function Sidebar({ user }: SidebarProps) {
       </ul>
 
       {/* Bottom: user + theme + logout */}
-      <div className="px-3 pb-4 border-t border-gray-200 dark:border-[#3A3A3A] pt-3 space-y-1">
+      <div className="px-3 pb-4 border-t border-[var(--border)] pt-3 space-y-1">
         {/* User info */}
         <div className="flex items-center gap-3 px-2 py-2">
           {user.avatarUrl ? (
@@ -138,7 +129,7 @@ export default function Sidebar({ user }: SidebarProps) {
             <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {user.fullName}
             </p>
-            <p className="text-xs text-gray-500 dark:text-[#9E9E9E] truncate">{user.email}</p>
+            <p className="text-xs text-[var(--text-secondary)] truncate">{user.email}</p>
           </div>
           <form action={signOutAction}>
             <button
@@ -154,7 +145,7 @@ export default function Sidebar({ user }: SidebarProps) {
         {/* Theme toggle */}
         <div className="flex items-center gap-3 px-2 py-1">
           <ThemeToggle />
-          <span className="text-sm text-gray-600 dark:text-[#9E9E9E]">Theme</span>
+          <span className="text-sm text-[var(--text-secondary)]">Theme</span>
         </div>
       </div>
     </nav>
@@ -163,10 +154,10 @@ export default function Sidebar({ user }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar: 240px on lg+, 60px (icon-only) on md */}
-      <aside className="hidden md:flex flex-col flex-shrink-0 w-[60px] lg:w-[240px] bg-[#F5F5F5] dark:bg-[#2C2C2C] border-r border-gray-200 dark:border-[#3A3A3A] h-screen sticky top-0 overflow-y-auto">
+      <aside className="hidden md:flex flex-col flex-shrink-0 w-[60px] lg:w-[240px] bg-[var(--bg-muted)] border-r border-[var(--border)] h-screen sticky top-0 overflow-y-auto">
         <nav className="flex flex-col h-full">
           {/* Logo */}
-          <div className="px-2 lg:px-4 py-5 flex items-center border-b border-gray-200 dark:border-[#3A3A3A]">
+          <div className="px-2 lg:px-4 py-5 flex items-center border-b border-[var(--border)]">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-8 h-8 rounded-lg bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center flex-shrink-0">
                 <BookOpen size={15} className="text-white" />
@@ -174,20 +165,6 @@ export default function Sidebar({ user }: SidebarProps) {
               <span className="hidden lg:block text-[16px] font-bold text-[#1976D2] dark:text-[#1976D2] leading-none select-none truncate">
                 Noteworthy
               </span>
-            </div>
-          </div>
-
-          {/* Search — lg+ only */}
-          <div className="hidden lg:block px-3 py-3">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#EEEEEE] dark:bg-[#333333] border border-[#E0E0E0] dark:border-[#3A3A3A]">
-              <Search size={14} className="text-gray-400 dark:text-[#9E9E9E] flex-shrink-0" />
-              <span className="text-sm text-gray-400 dark:text-[#616161]">Search entries...</span>
-            </div>
-          </div>
-          {/* Search icon-only on md */}
-          <div className="lg:hidden flex justify-center py-3">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 dark:text-[#9E9E9E] hover:bg-[#EEEEEE] dark:hover:bg-[#333333] cursor-pointer">
-              <Search size={17} />
             </div>
           </div>
 
@@ -218,7 +195,7 @@ export default function Sidebar({ user }: SidebarProps) {
           </ul>
 
           {/* Bottom */}
-          <div className="px-1.5 lg:px-3 pb-4 border-t border-gray-200 dark:border-[#3A3A3A] pt-3 space-y-1">
+          <div className="px-1.5 lg:px-3 pb-4 border-t border-[var(--border)] pt-3 space-y-1">
             {/* User */}
             <div className="flex items-center gap-3 px-1 lg:px-2 py-2">
               {user.avatarUrl ? (
@@ -237,7 +214,7 @@ export default function Sidebar({ user }: SidebarProps) {
                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                   {user.fullName}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-[#9E9E9E] truncate">{user.email}</p>
+                <p className="text-xs text-[var(--text-secondary)] truncate">{user.email}</p>
               </div>
               <form action={signOutAction} className="hidden lg:block flex-shrink-0">
                 <button
@@ -253,7 +230,7 @@ export default function Sidebar({ user }: SidebarProps) {
             {/* Theme */}
             <div className="flex items-center gap-3 px-1 lg:px-2 py-1">
               <ThemeToggle />
-              <span className="hidden lg:block text-sm text-gray-600 dark:text-[#9E9E9E]">Theme</span>
+              <span className="hidden lg:block text-sm text-[var(--text-secondary)]">Theme</span>
             </div>
 
             {/* Log out icon-only on md */}
@@ -282,7 +259,7 @@ export default function Sidebar({ user }: SidebarProps) {
         )}
         {/* Drawer panel */}
         <div
-          className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-[#F5F5F5] dark:bg-[#2C2C2C] border-r border-gray-200 dark:border-[#3A3A3A] transform transition-transform duration-200 ease-in-out md:hidden ${
+          className={`fixed inset-y-0 left-0 z-40 w-[240px] bg-[var(--bg-muted)] border-r border-[var(--border)] transform transition-transform duration-200 ease-in-out md:hidden ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >

@@ -50,7 +50,7 @@ export default function JournalEditor({
   }, [editor, editable])
 
   return (
-    <div className="tiptap-container rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-[#1E293B]">
+    <div className="tiptap-container rounded-lg border border-[var(--border)] overflow-hidden bg-[var(--bg-surface)]">
       {editor && <EditorToolbar editor={editor} disabled={!editable} />}
       <EditorContent editor={editor} />
     </div>

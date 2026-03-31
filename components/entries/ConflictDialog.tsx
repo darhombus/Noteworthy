@@ -19,8 +19,8 @@ export default function ConflictDialog({ onKeepMine, onDiscard }: ConflictDialog
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-sm border border-[#E5E7EB] dark:border-slate-700">
-        <div className="px-6 py-4 border-b border-[#E5E7EB] dark:border-slate-700 flex items-center gap-2">
+      <div className="bg-[var(--bg-surface)] rounded-xl shadow-xl w-full max-w-sm border border-[var(--border)]">
+        <div className="px-6 py-4 border-b border-[var(--border)] flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
           <h2 className="font-semibold text-gray-900 dark:text-white">Editing conflict</h2>
         </div>

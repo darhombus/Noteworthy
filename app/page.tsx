@@ -4,7 +4,7 @@ import ThemeToggle from '@/components/layout/ThemeToggle'
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[#FAFAFA] dark:bg-[#121212] flex flex-col">
+    <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
       <header className="flex justify-end p-4">
         <ThemeToggle />
       </header>
@@ -23,7 +23,7 @@ export default function LandingPage() {
           </h1>
 
           {/* Tagline */}
-          <p className="text-gray-500 dark:text-[#9E9E9E] text-[15px] leading-relaxed mb-10">
+          <p className="text-[var(--text-secondary)] text-[15px] leading-relaxed mb-10">
             Your private space to think, reflect, and grow.
           </p>
 

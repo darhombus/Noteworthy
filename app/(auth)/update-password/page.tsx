@@ -37,13 +37,13 @@ export default function UpdatePasswordPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FAFAFA] dark:bg-[#121212] flex flex-col">
+    <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
       <header className="flex justify-end p-4">
         <ThemeToggle />
       </header>
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[420px] bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-md border border-[#E0E0E0] dark:border-[#3A3A3A] px-10 py-10 flex flex-col items-center">
+        <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-10 py-10 flex flex-col items-center">
 
           {/* Logo */}
           <div className="w-16 h-16 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-3 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
@@ -56,7 +56,7 @@ export default function UpdatePasswordPage() {
           <h1 className="text-[26px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
             Set new password
           </h1>
-          <p className="text-sm text-gray-500 dark:text-[#9E9E9E] text-center mb-8">
+          <p className="text-sm text-[var(--text-secondary)] text-center mb-8">
             Choose a strong password for your account
           </p>
 
@@ -70,7 +70,7 @@ export default function UpdatePasswordPage() {
                 type="password"
                 placeholder="Min. 8 characters"
                 autoComplete="new-password"
-                className="w-full px-3.5 py-3 rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2C2C2C] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                className="w-full px-3.5 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />
               {errors.password && (
                 <p className="mt-1.5 text-xs text-red-500">{errors.password.message}</p>

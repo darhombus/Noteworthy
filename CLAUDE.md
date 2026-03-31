@@ -55,6 +55,24 @@ FRAMEWORK QUIRKS
   the file will be ignored. All route-guard and session-refresh logic lives in `proxy.ts`.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FIGMA DESIGNS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The designs live in a Figma Make file (not a standard Figma design file).
+
+  URL      : https://www.figma.com/make/8L2AKy4gSzUuNw1T4HUE95/JournalApp-design-screens
+  fileKey  : 8L2AKy4gSzUuNw1T4HUE95
+
+How to query the designs:
+1. NEVER pass a nodeId — Figma Make files have no node tree.
+2. Call mcp__figma__get_design_context with fileKey = "8L2AKy4gSzUuNw1T4HUE95" and no nodeId.
+3. If the first call times out or returns partial data, retry once — Figma Make files
+   can be slow to parse on the first request.
+4. The tool returns React component source code (not a node tree). Treat it as a
+   reference implementation and adapt it to this project's stack and conventions.
+5. Use the Agent tool (subagent_type: general-purpose) to fetch Figma context when
+   multiple retries may be needed — subagents handle retries automatically.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 BUILD DISCIPLINE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - Build ONLY what the current module prompt specifies.
