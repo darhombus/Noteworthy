@@ -9,6 +9,7 @@ import {
   type CreateEntryInput,
   type UpdateEntryInput,
 } from '@/lib/validations/entries'
+import { EMPTY_TIPTAP_DOC } from '@/lib/types/tiptap'
 import type { Database } from '@/types/supabase'
 
 type Json = Database['public']['Tables']['entries']['Insert']['content']
@@ -30,7 +31,7 @@ export async function createEntry(
     .insert({
       journal_id: parsed.data.journal_id,
       title: parsed.data.title ?? null,
-      content: (parsed.data.content ?? []) as unknown as Json,
+      content: (parsed.data.content ?? EMPTY_TIPTAP_DOC) as unknown as Json,
       entry_date: parsed.data.entry_date,
     })
     .select('entry_id')
@@ -85,6 +86,7 @@ export async function updateEntry(
 
   if (error) return { error: error.message }
 
+  revalidatePath('/journals', 'layout')
   return { success: true, updated_at: updated.updated_at }
 }
 

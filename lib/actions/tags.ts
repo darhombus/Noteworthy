@@ -19,7 +19,7 @@ async function getSession() {
 export async function createTag(data: CreateTagInput) {
   const parsed = createTagSchema.safeParse(data)
   if (!parsed.success) {
-    return { error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { supabase, session } = await getSession()
@@ -45,7 +45,7 @@ export async function createTag(data: CreateTagInput) {
 export async function updateTag(tagId: string, data: UpdateTagInput) {
   const parsed = updateTagSchema.safeParse(data)
   if (!parsed.success) {
-    return { error: parsed.error.errors[0]?.message ?? 'Invalid input' }
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
 
   const { supabase, session } = await getSession()

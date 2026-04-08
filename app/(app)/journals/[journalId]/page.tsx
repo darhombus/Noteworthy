@@ -39,10 +39,10 @@ export default async function JournalPage({ params }: JournalPageProps) {
 
   // Flatten nested entry_tags → tags array
   const entries = (rawEntries ?? []).map((entry) => {
-    const { entry_tags, ...rest } = entry as typeof entry & { entry_tags: RawEntryTag[] }
-    const tags = (entry_tags ?? [])
-      .map((et) => et.tags)
-      .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
+    const { entry_tags, ...rest } = entry as unknown as (typeof entry & { entry_tags: RawEntryTag[] })
+    const tags = (entry_tags ?? ([] as RawEntryTag[]))
+      .map((et: RawEntryTag) => et.tags)
+      .filter((t: RawEntryTag['tags']): t is { tag_id: string; tag_name: string; color: string } => t !== null)
     return { ...rest, tags }
   })
 

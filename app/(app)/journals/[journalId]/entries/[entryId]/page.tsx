@@ -40,13 +40,13 @@ export default async function EntryPage({ params }: EntryPageProps) {
 
   if (!entry || !journal) notFound()
 
-  const initialTags = ((rawEntryTags ?? []) as RawEntryTag[])
+  const initialTags = ((rawEntryTags ?? []) as unknown as RawEntryTag[])
     .map((et) => et.tags)
     .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
 
   return (
     <EntryEditor
-      key={entry.updated_at}
+      key={entry.entry_id}
       entry={entry}
       journal={journal}
       initialTags={initialTags}

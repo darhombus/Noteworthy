@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { extractPlainText } from '@/lib/utils/extractPlainText'
-import type { JSONContent } from '@tiptap/core'
+import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 
 const searchParamsSchema = z.object({
   q: z.string().max(200).optional().transform((v) => v ?? ''),
@@ -188,7 +187,7 @@ export async function GET(request: NextRequest) {
       const plainText = (() => {
         try {
           if (!row.content || typeof row.content !== 'object') return ''
-          return extractPlainText(row.content as JSONContent)
+          return extractPlainText(row.content as RichTextNode)
         } catch {
           return ''
         }
@@ -339,7 +338,7 @@ export async function GET(request: NextRequest) {
       const plainText = (() => {
         try {
           if (!row.content || typeof row.content !== 'object') return ''
-          return extractPlainText(row.content as JSONContent)
+          return extractPlainText(row.content as RichTextNode)
         } catch {
           return ''
         }
