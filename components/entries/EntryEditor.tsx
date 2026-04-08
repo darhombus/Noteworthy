@@ -11,9 +11,9 @@ import SaveStatus from './SaveStatus'
 import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
 import TagInput from './TagInput'
-import JournalEditor from '@/components/editor/JournalEditor'
-import type { JSONContent } from '@tiptap/core'
+import Tiptap from '@/components/editor/Tiptap'
 import type { Database } from '@/types/supabase'
+import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
 type Entry = Database['public']['Tables']['entries']['Row']
 type JournalMeta = Pick<
@@ -33,54 +33,36 @@ interface EntryEditorProps {
   initialTags: EntryTag[]
 }
 
-/**
- * Parse entry.content (JSONB — arrives as a parsed JS value from Supabase)
- * into a valid Tiptap JSONContent doc. Returns null if missing or invalid.
- * Any BlockNote-format content (no { type: 'doc' } root) is treated as null.
- */
-function parseInitialContent(raw: unknown): JSONContent | null {
-  if (!raw) return null
-  try {
-    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
-    if (
-      typeof obj === 'object' &&
-      obj !== null &&
-      (obj as Record<string, unknown>).type === 'doc'
-    ) {
-      return obj as JSONContent
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
 export default function EntryEditor({ entry, journal, initialTags }: EntryEditorProps) {
   const router = useRouter()
 
+  // Read the stored doc once. `isTiptapDoc` mirrors the DB CHECK constraint,
+  // so anything that somehow slipped through falls back to an empty doc.
+  const initialContent: TiptapDoc = isTiptapDoc(entry.content)
+    ? entry.content
+    : EMPTY_TIPTAP_DOC
+
   const [title, setTitle] = useState(entry.title ?? '')
-  const [editorContent, setEditorContent] = useState<JSONContent | null>(
-    () => parseInitialContent(entry.content),
-  )
+  const [content, setContent] = useState<TiptapDoc>(initialContent)
   const [entryDate, setEntryDate] = useState(entry.entry_date)
   const [isPinned, setIsPinned] = useState(entry.is_pinned)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   // Bundle all mutable fields into one save payload.
-  // content is sent as JSONContent — the server action stores it as JSONB.
   const savePayload = useMemo(
     () => ({
-      ...(editorContent !== null && { content: editorContent }),
+      content,
       title: title || undefined,
       entry_date: entryDate,
     }),
-    [editorContent, title, entryDate],
+    [content, title, entryDate],
   )
 
-  // Bug 3 fix: stable callback identity so JournalEditor's useEffect dep doesn't flap
-  const handleEditorChange = useCallback((content: JSONContent) => {
-    setEditorContent(content)
+  // Tiptap onChange — pass editor JSON through verbatim. No walkers, no
+  // replacers, no sanitisation. See memory/feedback_no_custom_serializers.md.
+  const handleContentChange = useCallback((doc: TiptapDoc) => {
+    setContent(doc)
   }, [])
 
   const { saveStatus, conflictDetected, dismissConflict, forceSave, saveNow } = useAutoSave({
@@ -101,6 +83,13 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     }
   }
 
+  async function handleBack() {
+    if (saveStatus === 'pending') {
+      await saveNow()
+    }
+    router.push(`/journals/${journal.journal_id}`)
+  }
+
   function handleDiscard() {
     dismissConflict()
     router.refresh()
@@ -111,7 +100,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
       {/* Editor top bar */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-[var(--bg-page)] shrink-0">
         <button
-          onClick={() => router.push(`/journals/${journal.journal_id}`)}
+          onClick={handleBack}
           className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-gray-500 dark:text-slate-400"
           aria-label="Back to journal"
         >
@@ -188,12 +177,10 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           {/* Tags */}
           <TagInput entryId={entry.entry_id} initialTags={initialTags} />
 
-          {/* Tiptap rich-text editor */}
-          <JournalEditor
-            initialContent={parseInitialContent(entry.content)}
-            onChange={handleEditorChange}
-            editable={true}
-          />
+          {/* Rich-text body editor */}
+          <div className="mt-6">
+            <Tiptap initialContent={initialContent} onChange={handleContentChange} />
+          </div>
         </div>
       </div>
 

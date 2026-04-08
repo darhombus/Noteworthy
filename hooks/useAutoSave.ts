@@ -76,6 +76,27 @@ export function useAutoSave({
     return () => window.removeEventListener('pagehide', handlePageHide)
   }, [entryId])
 
+  // Beacon save on SPA navigation (component unmount) — handles sidebar links,
+  // router.push calls from other components, and browser back button
+  useEffect(() => {
+    return () => {
+      const status = saveStatusRef.current
+      if (status !== 'pending' && status !== 'saving' && status !== 'error') return
+
+      const body = JSON.stringify({
+        ...(latestContentRef.current as Record<string, unknown>),
+        updated_at: serverUpdatedAtRef.current,
+      })
+
+      fetch(`/api/entries/${entryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      }).catch(() => {})
+    }
+  }, [entryId])
+
   const debouncedContent = useDebounce(content, 3000)
 
   // Set 'pending' immediately when content changes (before debounce fires)
@@ -100,7 +121,6 @@ export function useAutoSave({
 
     async function doSave() {
       setSaveStatus('saving')
-
       for (let attempt = 0; attempt < 3; attempt++) {
         if (cancelled) return
         if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1))

@@ -8,7 +8,7 @@ import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { togglePin } from '@/lib/actions/entries'
 import type { Database } from '@/types/supabase'
-import ReadOnlyPreview from '@/components/editor/ReadOnlyPreview'
+import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import TagChip from '@/components/ui/TagChip'
 
 /** Convert a 6-digit hex color + 2-char hex opacity to rgba() to avoid
@@ -102,6 +102,24 @@ export default function EntryCard({
     year: 'numeric',
   }).format(new Date(`${entry.entry_date}T00:00:00`))
 
+  // Plain-text preview snippet derived from the stored entry content.
+  const previewSnippet = (() => {
+    const raw = entry.content
+    if (raw == null) return ''
+    let text = ''
+    if (typeof raw === 'string') {
+      text = raw
+    } else if (typeof raw === 'object') {
+      try {
+        text = extractPlainText(raw as RichTextNode)
+      } catch {
+        text = ''
+      }
+    }
+    if (!text) return ''
+    return text.length > 110 ? text.slice(0, 110) + '…' : text
+  })()
+
   const visibleTags = tags.slice(0, 3)
   const extraCount = tags.length - 3
 
@@ -170,11 +188,11 @@ export default function EntryCard({
           style={{
             color: 'var(--text-secondary)',
             display: '-webkit-box',
-            WebkitLineClamp: 2,
+            WebkitLineClamp: 1,
             WebkitBoxOrient: 'vertical',
           }}
         >
-          <ReadOnlyPreview content={entry.content as string} maxChars={160} />
+          {previewSnippet && <span>{previewSnippet}</span>}
         </div>
 
         {/* Row 4: tags */}

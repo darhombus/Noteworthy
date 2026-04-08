@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { updateTag, deleteTag } from '@/lib/actions/tags'
-import { TAG_COLORS } from '@/lib/validations/tags'
+import { TAG_COLORS, type UpdateTagInput } from '@/lib/validations/tags'
 import TagChip from '@/components/ui/TagChip'
 import MergeTagModal from './MergeTagModal'
 import type { TagEntryRef } from '@/app/(app)/tags/page'
@@ -59,7 +59,7 @@ export default function TagManagementClient({ initialTags, tagEntriesMap }: TagM
 
   async function handleSave(tagId: string) {
     setEditError('')
-    const result = await updateTag(tagId, { tag_name: editName, color: editColor as TagRow['color'] })
+    const result = await updateTag(tagId, { tag_name: editName, color: editColor as NonNullable<UpdateTagInput['color']> })
     if ('error' in result) {
       setEditError(result.error ?? 'Failed to update tag')
       return
