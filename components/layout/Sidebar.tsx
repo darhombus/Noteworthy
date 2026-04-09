@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useTransition } from 'react'
 import {
   LayoutDashboard,
   BookOpen,
@@ -42,7 +42,16 @@ function getInitials(name: string): string {
 
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [, startTransition] = useTransition()
   const { sidebarOpen, setSidebarOpen } = useUIStore()
+
+  function handleSignOut() {
+    startTransition(async () => {
+      await signOutAction()
+      router.push('/')
+    })
+  }
 
   // Close drawer on route change
   useEffect(() => {
@@ -131,15 +140,14 @@ export default function Sidebar({ user }: SidebarProps) {
             </p>
             <p className="text-xs text-[var(--text-secondary)] truncate">{user.email}</p>
           </div>
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              title="Log out"
-              className="p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none flex-shrink-0"
-            >
-              <LogOut size={15} />
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            title="Log out"
+            className="p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none flex-shrink-0"
+          >
+            <LogOut size={15} />
+          </button>
         </div>
 
         {/* Theme toggle */}
@@ -216,15 +224,14 @@ export default function Sidebar({ user }: SidebarProps) {
                 </p>
                 <p className="text-xs text-[var(--text-secondary)] truncate">{user.email}</p>
               </div>
-              <form action={signOutAction} className="hidden lg:block flex-shrink-0">
-                <button
-                  type="submit"
-                  title="Log out"
-                  className="p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
-                >
-                  <LogOut size={15} />
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                title="Log out"
+                className="hidden lg:block flex-shrink-0 p-1.5 rounded-lg text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
+              >
+                <LogOut size={15} />
+              </button>
             </div>
 
             {/* Theme */}
@@ -234,15 +241,14 @@ export default function Sidebar({ user }: SidebarProps) {
             </div>
 
             {/* Log out icon-only on md */}
-            <form action={signOutAction} className="lg:hidden">
-              <button
-                type="submit"
-                title="Log out"
-                className="w-full flex justify-center p-2 rounded-xl text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
-              >
-                <LogOut size={17} />
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title="Log out"
+              className="lg:hidden w-full flex justify-center p-2 rounded-xl text-gray-400 dark:text-[#616161] hover:text-gray-600 dark:hover:text-slate-300 hover:bg-[#EEEEEE] dark:hover:bg-[#333333] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none"
+            >
+              <LogOut size={17} />
+            </button>
           </div>
         </nav>
       </aside>
