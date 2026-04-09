@@ -248,7 +248,7 @@ export default function TagInput({ entryId, initialTags }: TagInputProps) {
 
       {/* Dropdown */}
       {dropdownOpen && dropdownItems.length > 0 && (
-        <div className="absolute left-0 top-full mt-1 z-20 w-64 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 max-h-48 overflow-y-auto">
+        <div className="absolute left-0 top-full mt-1 z-50 w-64 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 max-h-48 overflow-y-auto">
           {dropdownItems.map((item, i) => {
             const isHighlighted = i === highlightedIndex
             if (item.type === 'existing') {
