@@ -15,15 +15,38 @@ export default async function SettingsPage() {
   const limit = STORAGE_QUOTA_BYTES
   const percentUsed = Math.round((currentUsage / limit) * 1000) / 10
 
-  const barColor =
-    percentUsed > 90
-      ? 'bg-red-500'
-      : percentUsed > 70
-        ? 'bg-yellow-500'
-        : 'bg-green-500'
+  // Image vs video breakdown
+  let imageUsage = 0
+  let videoUsage = 0
+  if (user) {
+    const { data: breakdown } = await supabase
+      .from('media')
+      .select(
+        'file_type, file_size, entries!inner(journal_id, journals!inner(user_id))',
+      )
+      .eq('entries.journals.user_id', user.id)
 
+    if (breakdown) {
+      for (const row of breakdown) {
+        const size = Number(row.file_size ?? 0)
+        if (row.file_type === 'video') {
+          videoUsage += size
+        } else {
+          imageUsage += size
+        }
+      }
+    }
+  }
+
+  // Warning thresholds: yellow at 80% (160 MB), red at 95% (190 MB)
   const approaching = currentUsage > 0.8 * limit
   const almostFull = currentUsage > 0.95 * limit
+
+  const barColor = almostFull
+    ? 'bg-red-500'
+    : approaching
+      ? 'bg-yellow-500'
+      : 'bg-green-500'
 
   return (
     <div className="space-y-6">
@@ -34,6 +57,7 @@ export default async function SettingsPage() {
           Storage usage
         </h2>
 
+        {/* Total bar */}
         <div className="flex items-center justify-between text-sm text-[var(--text-secondary)] mb-2">
           <span>
             {formatStorageSize(currentUsage)} of {formatStorageSize(limit)} used
@@ -46,6 +70,22 @@ export default async function SettingsPage() {
             className={`h-full ${barColor} transition-all`}
             style={{ width: `${Math.min(100, percentUsed)}%` }}
           />
+        </div>
+
+        {/* Breakdown */}
+        <div className="mt-3 flex gap-6 text-xs text-[var(--text-secondary)]">
+          <span>
+            Images:{' '}
+            <span className="font-medium text-[var(--text-primary)]">
+              {formatStorageSize(imageUsage)}
+            </span>
+          </span>
+          <span>
+            Videos:{' '}
+            <span className="font-medium text-[var(--text-primary)]">
+              {formatStorageSize(videoUsage)}
+            </span>
+          </span>
         </div>
 
         {almostFull ? (

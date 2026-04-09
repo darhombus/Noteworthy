@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Link2,
   ImagePlus,
+  Film,
   Type,
   Highlighter,
   SuperscriptIcon,
@@ -32,6 +33,8 @@ interface EditorToolbarProps {
   /** Optional handler invoked when the user clicks the image button. The
    *  toolbar doesn't own the modal — the parent (Tiptap.tsx) does. */
   onInsertImage?: () => void
+  /** Optional handler invoked when the user clicks the video button. */
+  onInsertVideo?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -290,7 +293,7 @@ function getFontSizeLabel(editor: Editor): string {
 // Toolbar
 // ─────────────────────────────────────────────────────────────────────────
 
-export default function EditorToolbar({ editor, onInsertImage }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onInsertImage, onInsertVideo }: EditorToolbarProps) {
   // Tiptap doesn't trigger React re-renders on selection-only transactions
   // by default in v3 — subscribe so active-state highlighting stays accurate.
   const [, forceUpdate] = useState(0)
@@ -616,6 +619,13 @@ export default function EditorToolbar({ editor, onInsertImage }: EditorToolbarPr
       {onInsertImage && (
         <ToolButton onClick={onInsertImage} ariaLabel="Insert image">
           <ImagePlus className="w-4 h-4" />
+        </ToolButton>
+      )}
+
+      {/* Video */}
+      {onInsertVideo && (
+        <ToolButton onClick={onInsertVideo} ariaLabel="Insert video" tooltip="Insert video">
+          <Film className="w-4 h-4" />
         </ToolButton>
       )}
 
