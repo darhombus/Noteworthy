@@ -14,6 +14,7 @@ import DatePicker from './DatePicker'
 import EditorToolbar from '@/components/editor/EditorToolbar'
 import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
+import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
@@ -51,6 +52,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showVideoModal, setShowVideoModal] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -126,6 +128,9 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
       if (text === '/image') {
         editor.chain().focus().deleteRange({ from: lineStart, to: from }).run()
         setShowUploadModal(true)
+      } else if (text === '/video') {
+        editor.chain().focus().deleteRange({ from: lineStart, to: from }).run()
+        setShowVideoModal(true)
       }
     }
     const dom = editor.view.dom
@@ -239,7 +244,11 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           <div className="flex justify-end h-5 mb-1">
             <SaveStatus status={saveStatus} onSaveNow={saveNow} />
           </div>
-          <EditorToolbar editor={editor} onInsertImage={() => setShowUploadModal(true)} />
+          <EditorToolbar
+            editor={editor}
+            onInsertImage={() => setShowUploadModal(true)}
+            onInsertVideo={() => setShowVideoModal(true)}
+          />
         </div>
       )}
 
@@ -267,6 +276,24 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
               .chain()
               .focus()
               .insertContent({ type: 'image', attrs: { src: fileUrl, mediaId } })
+              .run()
+          }}
+        />
+      )}
+
+      {/* Video upload modal */}
+      {showVideoModal && editor && (
+        <VideoUploadModal
+          entryId={entry.entry_id}
+          onClose={() => setShowVideoModal(false)}
+          onUploadComplete={(mediaId, fileUrl, thumbnailUrl) => {
+            editor
+              .chain()
+              .focus()
+              .insertContent({
+                type: 'video',
+                attrs: { src: fileUrl, thumbnailSrc: thumbnailUrl, mediaId },
+              })
               .run()
           }}
         />

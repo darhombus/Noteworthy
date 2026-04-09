@@ -6,6 +6,7 @@ import type { TiptapDoc } from '@/lib/types/tiptap'
 import EditorToolbar from './EditorToolbar'
 import ImageUploadModal from './ImageUploadModal'
 import ImageLightbox from './ImageLightbox'
+import VideoUploadModal from './VideoUploadModal'
 import { useTiptapEditor } from './useTiptapEditor'
 
 interface TiptapProps {
@@ -15,7 +16,7 @@ interface TiptapProps {
   /** Fires on every transaction with the doc returned by `editor.getJSON()`.
    *  The parent must NOT transform this value — pass it straight to autosave. */
   onChange: (doc: TiptapDoc) => void
-  /** Required when image upload is in use — uploaded media is keyed by entry. */
+  /** Required when image/video upload is in use — uploaded media is keyed by entry. */
   entryId?: string
 }
 
@@ -27,12 +28,12 @@ interface TiptapProps {
  */
 export default function Tiptap({ initialContent, onChange, entryId }: TiptapProps) {
   const editor = useTiptapEditor({ initialContent, onChange })
-  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [showImageModal, setShowImageModal] = useState(false)
+  const [showVideoModal, setShowVideoModal] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
-  // Slash command: typing `/image` at the start of an empty line opens the
-  // upload modal. Lightweight matcher — we deliberately avoid pulling in the
-  // full @tiptap/suggestion plugin for a single command.
+  // Slash commands: typing `/image` or `/video` at the start of an empty line
+  // opens the corresponding upload modal.
   useEffect(() => {
     if (!editor || !entryId) return
     const onKeyUp = () => {
@@ -40,9 +41,11 @@ export default function Tiptap({ initialContent, onChange, entryId }: TiptapProp
       const lineStart = $from.start()
       const text = editor.state.doc.textBetween(lineStart, from, '\n', '\n')
       if (text === '/image') {
-        // Delete the trigger text, then open the modal.
         editor.chain().focus().deleteRange({ from: lineStart, to: from }).run()
-        setShowUploadModal(true)
+        setShowImageModal(true)
+      } else if (text === '/video') {
+        editor.chain().focus().deleteRange({ from: lineStart, to: from }).run()
+        setShowVideoModal(true)
       }
     }
     const dom = editor.view.dom
@@ -51,6 +54,7 @@ export default function Tiptap({ initialContent, onChange, entryId }: TiptapProp
   }, [editor, entryId])
 
   // Click an image inside the editor to open the lightbox.
+  // Videos are intentionally NOT handled here — they play inline.
   useEffect(() => {
     if (!editor) return
     const onClick = (e: MouseEvent) => {
@@ -73,19 +77,37 @@ export default function Tiptap({ initialContent, onChange, entryId }: TiptapProp
     <div>
       <EditorToolbar
         editor={editor}
-        onInsertImage={entryId ? () => setShowUploadModal(true) : undefined}
+        onInsertImage={entryId ? () => setShowImageModal(true) : undefined}
+        onInsertVideo={entryId ? () => setShowVideoModal(true) : undefined}
       />
       <EditorContent editor={editor} />
 
-      {showUploadModal && entryId && (
+      {showImageModal && entryId && (
         <ImageUploadModal
           entryId={entryId}
-          onClose={() => setShowUploadModal(false)}
+          onClose={() => setShowImageModal(false)}
           onUploadComplete={(mediaId, fileUrl) => {
             editor
               .chain()
               .focus()
               .insertContent({ type: 'image', attrs: { src: fileUrl, mediaId } })
+              .run()
+          }}
+        />
+      )}
+
+      {showVideoModal && entryId && (
+        <VideoUploadModal
+          entryId={entryId}
+          onClose={() => setShowVideoModal(false)}
+          onUploadComplete={(mediaId, fileUrl, thumbnailUrl) => {
+            editor
+              .chain()
+              .focus()
+              .insertContent({
+                type: 'video',
+                attrs: { src: fileUrl, thumbnailSrc: thumbnailUrl, mediaId },
+              })
               .run()
           }}
         />
