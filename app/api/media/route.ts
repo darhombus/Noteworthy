@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
       entry_id: entryId,
       file_name: file.name,
       file_url: publicUrl,
+      object_path: objectPath,
       file_type: 'image',
       file_size: file.size,
       mime_type: file.type,

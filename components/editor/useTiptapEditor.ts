@@ -9,7 +9,7 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
-import Image from '@tiptap/extension-image'
+import { ImageNode } from '@/components/editor/ImageNode'
 import {
   TextStyle,
   FontFamily,
@@ -72,7 +72,7 @@ export function useTiptapEditor({ initialContent, onChange }: UseTiptapEditorArg
       Superscript,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({ inline: false, allowBase64: false }),
+      ImageNode.configure({ inline: false, allowBase64: false }),
     ],
     content: isTiptapDoc(initialContent) ? initialContent : EMPTY_TIPTAP_DOC,
     // Required for Next.js SSR: defer initial render until client mount so

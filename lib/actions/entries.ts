@@ -9,10 +9,29 @@ import {
   type CreateEntryInput,
   type UpdateEntryInput,
 } from '@/lib/validations/entries'
-import { EMPTY_TIPTAP_DOC } from '@/lib/types/tiptap'
+import { EMPTY_TIPTAP_DOC, type TiptapNode } from '@/lib/types/tiptap'
 import type { Database } from '@/types/supabase'
 
 type Json = Database['public']['Tables']['entries']['Insert']['content']
+
+/**
+ * Walk a Tiptap JSON document and collect every `mediaId` attribute from
+ * `image` nodes.  These are the UUIDs that are still referenced in the doc
+ * after the latest save, used to determine which media rows are now orphaned.
+ */
+function collectImageMediaIds(nodes: TiptapNode[]): string[] {
+  const ids: string[] = []
+  for (const node of nodes) {
+    if (node.type === 'image') {
+      const mid = node.attrs?.mediaId
+      if (typeof mid === 'string' && mid.length > 0) ids.push(mid)
+    }
+    if (Array.isArray(node.content)) {
+      ids.push(...collectImageMediaIds(node.content))
+    }
+  }
+  return ids
+}
 
 export async function createEntry(
   data: CreateEntryInput,
@@ -85,6 +104,28 @@ export async function updateEntry(
     .single()
 
   if (error) return { error: error.message }
+
+  // Reconcile media: soft-delete any rows for this entry whose mediaId is no
+  // longer referenced in the saved doc.  The 30-day cron will later hard-delete
+  // the row and its storage object.  We only run this when content was included
+  // in the save payload so title-only saves don't mistakenly orphan images.
+  if (parsed.data.content != null) {
+    const referencedIds = collectImageMediaIds(
+      (parsed.data.content as { content?: TiptapNode[] }).content ?? [],
+    )
+    let orphanQuery = supabase
+      .from('media')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('entry_id', id)
+      .is('deleted_at', null)
+    if (referencedIds.length > 0) {
+      orphanQuery = orphanQuery.not('media_id', 'in', `(${referencedIds.join(',')})`)
+    }
+    // Fire-and-forget — a reconcile failure must never block the save response.
+    orphanQuery.then().catch((err: unknown) => {
+      console.error('[reconcile-media] failed for entry', id, err)
+    })
+  }
 
   revalidatePath('/journals', 'layout')
   return { success: true, updated_at: updated.updated_at }

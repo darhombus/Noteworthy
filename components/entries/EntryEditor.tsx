@@ -262,8 +262,12 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         <ImageUploadModal
           entryId={entry.entry_id}
           onClose={() => setShowUploadModal(false)}
-          onUploadComplete={(_mediaId, fileUrl) => {
-            editor.chain().focus().setImage({ src: fileUrl }).run()
+          onUploadComplete={(mediaId, fileUrl) => {
+            editor
+              .chain()
+              .focus()
+              .insertContent({ type: 'image', attrs: { src: fileUrl, mediaId } })
+              .run()
           }}
         />
       )}
