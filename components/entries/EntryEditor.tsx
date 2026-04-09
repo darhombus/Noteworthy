@@ -12,6 +12,8 @@ import DeleteEntryModal from './DeleteEntryModal'
 import TagInput from './TagInput'
 import DatePicker from './DatePicker'
 import EditorToolbar from '@/components/editor/EditorToolbar'
+import ImageUploadModal from '@/components/editor/ImageUploadModal'
+import ImageLightbox from '@/components/editor/ImageLightbox'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
@@ -48,6 +50,8 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [entryDate, setEntryDate] = useState(entry.entry_date)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -109,6 +113,40 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   })
 
   useBeforeUnload(saveStatus)
+
+  // `/image` slash command — typing it on an empty position opens the
+  // upload modal. Minimal implementation; we strip the trigger text first
+  // so it never persists in the saved doc.
+  useEffect(() => {
+    if (!editor) return
+    const onKeyUp = () => {
+      const { from, $from } = editor.state.selection
+      const lineStart = $from.start()
+      const text = editor.state.doc.textBetween(lineStart, from, '\n', '\n')
+      if (text === '/image') {
+        editor.chain().focus().deleteRange({ from: lineStart, to: from }).run()
+        setShowUploadModal(true)
+      }
+    }
+    const dom = editor.view.dom
+    dom.addEventListener('keyup', onKeyUp)
+    return () => dom.removeEventListener('keyup', onKeyUp)
+  }, [editor])
+
+  // Click an <img> inside the editor to open the fullscreen lightbox.
+  useEffect(() => {
+    if (!editor) return
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && target.tagName === 'IMG') {
+        const src = (target as HTMLImageElement).src
+        if (src) setLightboxSrc(src)
+      }
+    }
+    const dom = editor.view.dom
+    dom.addEventListener('click', onClick)
+    return () => dom.removeEventListener('click', onClick)
+  }, [editor])
 
   async function handleBack() {
     if (saveStatus === 'pending') {
@@ -201,7 +239,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           <div className="flex justify-end h-5 mb-1">
             <SaveStatus status={saveStatus} onSaveNow={saveNow} />
           </div>
-          <EditorToolbar editor={editor} />
+          <EditorToolbar editor={editor} onInsertImage={() => setShowUploadModal(true)} />
         </div>
       )}
 
@@ -217,6 +255,22 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
       {/* Conflict dialog */}
       {conflictDetected && (
         <ConflictDialog onKeepMine={forceSave} onDiscard={handleDiscard} />
+      )}
+
+      {/* Image upload modal */}
+      {showUploadModal && editor && (
+        <ImageUploadModal
+          entryId={entry.entry_id}
+          onClose={() => setShowUploadModal(false)}
+          onUploadComplete={(_mediaId, fileUrl) => {
+            editor.chain().focus().setImage({ src: fileUrl }).run()
+          }}
+        />
+      )}
+
+      {/* Image lightbox */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
 
       {/* Delete modal */}

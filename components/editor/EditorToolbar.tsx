@@ -19,6 +19,7 @@ import {
   Redo,
   ChevronDown,
   Link2,
+  ImagePlus,
   Type,
   Highlighter,
   SuperscriptIcon,
@@ -28,6 +29,9 @@ import {
 
 interface EditorToolbarProps {
   editor: Editor
+  /** Optional handler invoked when the user clicks the image button. The
+   *  toolbar doesn't own the modal — the parent (Tiptap.tsx) does. */
+  onInsertImage?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -286,7 +290,7 @@ function getFontSizeLabel(editor: Editor): string {
 // Toolbar
 // ─────────────────────────────────────────────────────────────────────────
 
-export default function EditorToolbar({ editor }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onInsertImage }: EditorToolbarProps) {
   // Tiptap doesn't trigger React re-renders on selection-only transactions
   // by default in v3 — subscribe so active-state highlighting stays accurate.
   const [, forceUpdate] = useState(0)
@@ -607,6 +611,13 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
       >
         <Link2 className="w-4 h-4" />
       </ToolButton>
+
+      {/* Image */}
+      {onInsertImage && (
+        <ToolButton onClick={onInsertImage} ariaLabel="Insert image">
+          <ImagePlus className="w-4 h-4" />
+        </ToolButton>
+      )}
 
       <Divider />
 
