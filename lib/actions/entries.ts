@@ -122,7 +122,7 @@ export async function updateEntry(
       orphanQuery = orphanQuery.not('media_id', 'in', `(${referencedIds.join(',')})`)
     }
     // Fire-and-forget — a reconcile failure must never block the save response.
-    orphanQuery.then().catch((err: unknown) => {
+    void Promise.resolve(orphanQuery).catch((err: unknown) => {
       console.error('[reconcile-media] failed for entry', id, err)
     })
   }

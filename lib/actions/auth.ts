@@ -80,10 +80,9 @@ export async function updatePasswordAction(
   return { success: true }
 }
 
-export async function signOutAction(): Promise<never> {
+export async function signOutAction(): Promise<void> {
   const supabase = await createClient()
   await supabase.auth.signOut()
   const cookieStore = await cookies()
   cookieStore.delete('nw_remember_me')
-  redirect('/')
 }
