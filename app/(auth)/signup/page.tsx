@@ -54,30 +54,30 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
-      <header className="flex justify-end p-4">
+    <main className="relative min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
+      <div className="absolute top-3 right-3">
         <ThemeToggle />
-      </header>
+      </div>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-10 py-10 flex flex-col items-center">
+      <div className="w-full flex justify-center">
+        <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-8 py-6 flex flex-col items-center">
 
           {/* Logo */}
-          <div className="w-16 h-16 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-3 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
-            <BookOpen size={30} className="text-white" />
+          <div className="w-12 h-12 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-2 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
+            <BookOpen size={22} className="text-white" />
           </div>
-          <span className="text-[17px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-6 select-none">
+          <span className="text-[15px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-3 select-none">
             Noteworthy
           </span>
 
-          <h1 className="text-[26px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
+          <h1 className="text-[22px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
             Create your account
           </h1>
-          <p className="text-sm text-[var(--text-secondary)] text-center mb-8">
+          <p className="text-sm text-[var(--text-secondary)] text-center mb-4">
             Start your journaling journey today
           </p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-3" noValidate>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD] mb-1.5">
                 Full Name
@@ -87,7 +87,7 @@ export default function SignupPage() {
                 type="text"
                 placeholder="Jane Doe"
                 autoComplete="name"
-                className="w-full px-3.5 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />
               {errors.fullName && (
                 <p className="mt-1.5 text-xs text-red-500">{errors.fullName.message}</p>
@@ -103,7 +103,7 @@ export default function SignupPage() {
                 type="email"
                 placeholder="you@example.com"
                 autoComplete="email"
-                className="w-full px-3.5 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />
               {errors.email && (
                 <p className="mt-1.5 text-xs text-red-500">{errors.email.message}</p>
@@ -119,7 +119,7 @@ export default function SignupPage() {
                 type="password"
                 placeholder="Min. 8 characters"
                 autoComplete="new-password"
-                className="w-full px-3.5 py-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />
               {password && strength && (
                 <div className="mt-2 flex items-center gap-2">
@@ -147,13 +147,13 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-[#1976D2] dark:bg-[#1976D2] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+              className="w-full py-2.5 bg-[#1976D2] dark:bg-[#1976D2] text-white rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mt-1"
             >
               {isLoading ? 'Creating account…' : 'Create account'}
             </button>
           </form>
 
-          <p className="mt-7 text-sm text-[var(--text-secondary)]">
+          <p className="mt-4 text-sm text-[var(--text-secondary)]">
             Already have an account?{' '}
             <Link href="/login" className="text-[#1976D2] dark:text-[#1976D2] font-semibold hover:underline">
               Log in

@@ -8,6 +8,7 @@
   --bg-surface: #FAF8F5;
   --bg-muted: #EAE6E0;
   --border: #D4D0CA;
+  --border-strong: #A8A196;
   --text-primary: #212121;
   --text-secondary: #757575;
   --text-muted: #9E9E9E;
@@ -19,6 +20,7 @@
   --bg-surface: #1E1E1E;
   --bg-muted: #2C2C2C;
   --border: #3A3A3A;
+  --border-strong: #5A5A5A;
   --text-primary: #F5F5F5;
   --text-secondary: #9E9E9E;
   --text-muted: #757575;
@@ -58,6 +60,52 @@
 }
 .ProseMirror li > p {
   margin: 0;
+}
+/* Task list (checklists) */
+.ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.25em;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.35em;
+  user-select: none;
+}
+.ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ProseMirror ul[data-type='taskList'] input[type='checkbox'] {
+  cursor: pointer;
+  width: 1em;
+  height: 1em;
+  accent-color: var(--brand);
+}
+.ProseMirror ul[data-type='taskList'] li[data-checked='true'] > div {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+/* Links inside editor */
+.ProseMirror a {
+  color: var(--brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Highlight fallback (Highlight extension usually uses inline color) */
+.ProseMirror mark {
+  border-radius: 0.125em;
+  padding: 0 0.1em;
+}
+/* Superscript / subscript sizing — browser defaults can look too small */
+.ProseMirror sup,
+.ProseMirror sub {
+  font-size: 0.75em;
+  line-height: 0;
 }
 .ProseMirror blockquote {
   border-left: 3px solid var(--border);

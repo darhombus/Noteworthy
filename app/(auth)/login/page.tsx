@@ -34,31 +34,31 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
-      <header className="flex justify-end p-4">
+    <main className="relative min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
+      <div className="absolute top-3 right-3">
         <ThemeToggle />
-      </header>
+      </div>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-10 py-10 flex flex-col items-center">
+      <div className="w-full flex justify-center">
+        <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-8 py-8 flex flex-col items-center">
 
           {/* Logo */}
-          <div className="w-16 h-16 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-3 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
-            <BookOpen size={30} className="text-white" />
+          <div className="w-14 h-14 rounded-2xl bg-[#1976D2] dark:bg-[#1976D2] flex items-center justify-center mb-2 shadow-lg shadow-[#1976D2]/20 dark:shadow-[#1976D2]/20">
+            <BookOpen size={26} className="text-white" />
           </div>
-          <span className="text-[17px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-6 select-none">
+          <span className="text-[16px] font-bold text-[#1976D2] dark:text-[#1976D2] mb-4 select-none">
             Noteworthy
           </span>
 
           {/* Heading */}
-          <h1 className="text-[26px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
+          <h1 className="text-[24px] font-semibold text-gray-900 dark:text-white tracking-tight text-center mb-1">
             Welcome back
           </h1>
-          <p className="text-sm text-[var(--text-secondary)] text-center mb-8">
+          <p className="text-sm text-[var(--text-secondary)] text-center mb-5">
             Sign in to continue your journaling journey
           </p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-3" noValidate>
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD] mb-1.5">
@@ -143,7 +143,7 @@ export default function LoginPage() {
           </form>
 
           {/* Sign up link */}
-          <p className="mt-7 text-sm text-[var(--text-secondary)]">
+          <p className="mt-5 text-sm text-[var(--text-secondary)]">
             Don&apos;t have an account?{' '}
             <Link
               href="/signup"

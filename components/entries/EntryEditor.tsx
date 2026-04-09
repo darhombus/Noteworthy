@@ -1,17 +1,18 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Pin, MoreHorizontal } from 'lucide-react'
-import { toast } from 'sonner'
-import { togglePin } from '@/lib/actions/entries'
+import { ArrowLeft, MoreHorizontal } from 'lucide-react'
+import { EditorContent } from '@tiptap/react'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import SaveStatus from './SaveStatus'
 import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
 import TagInput from './TagInput'
-import Tiptap from '@/components/editor/Tiptap'
+import DatePicker from './DatePicker'
+import EditorToolbar from '@/components/editor/EditorToolbar'
+import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
@@ -45,9 +46,37 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [title, setTitle] = useState(entry.title ?? '')
   const [content, setContent] = useState<TiptapDoc>(initialContent)
   const [entryDate, setEntryDate] = useState(entry.entry_date)
-  const [isPinned, setIsPinned] = useState(entry.is_pinned)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Latest selectable date — today, in local time, as YYYY-MM-DD.
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }, [])
+
+  // Close the overflow menu when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    function onMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   // Bundle all mutable fields into one save payload.
   const savePayload = useMemo(
@@ -65,6 +94,14 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     setContent(doc)
   }, [])
 
+  // Own the Tiptap editor instance here so the toolbar and editor body can
+  // live in separate DOM positions — toolbar pinned above the scroll area,
+  // body inside it.
+  const editor = useTiptapEditor({
+    initialContent,
+    onChange: handleContentChange,
+  })
+
   const { saveStatus, conflictDetected, dismissConflict, forceSave, saveNow } = useAutoSave({
     content: savePayload,
     entryId: entry.entry_id,
@@ -72,16 +109,6 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   })
 
   useBeforeUnload(saveStatus)
-
-  async function handlePinToggle() {
-    const prev = isPinned
-    setIsPinned(!prev)
-    const result = await togglePin(entry.entry_id, prev)
-    if ('error' in result) {
-      setIsPinned(prev)
-      toast.error('Failed to update pin')
-    }
-  }
 
   async function handleBack() {
     if (saveStatus === 'pending') {
@@ -96,54 +123,42 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Editor top bar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--border)] bg-[var(--bg-page)] shrink-0">
+    <div className="max-w-[720px] mx-auto pb-8">
+      {/* Top row — back button, journal label, overflow menu. Scrolls
+          normally with the rest of the metadata. Save status lives in the
+          sticky toolbar block below so it stays visible on long entries. */}
+      <div className="flex items-center gap-3 py-2 border-b border-[var(--border)]">
         <button
           onClick={handleBack}
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors text-gray-500 dark:text-slate-400"
+          className="p-1.5 rounded hover:bg-[var(--bg-muted)] transition-colors text-[var(--text-secondary)]"
           aria-label="Back to journal"
+          title="Back to journal"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        <span className="text-sm text-gray-500 dark:text-slate-400 truncate hidden sm:block">
+        <span className="text-sm text-[var(--text-secondary)] truncate hidden sm:block">
           {journal.title}
         </span>
 
         <div className="ml-auto flex items-center gap-3">
-          <SaveStatus status={saveStatus} onSaveNow={saveNow} />
-
-          <button
-            onClick={handlePinToggle}
-            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
-            aria-label={isPinned ? 'Unpin' : 'Pin'}
-          >
-            <Pin
-              className={`w-4 h-4 transition-colors ${
-                isPinned
-                  ? 'fill-[var(--brand)] text-[var(--brand)]'
-                  : 'text-gray-400 dark:text-slate-500'
-              }`}
-            />
-          </button>
-
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
-              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+              className="p-1.5 rounded hover:bg-[var(--bg-muted)] transition-colors"
               aria-label="More options"
+              title="More options"
             >
-              <MoreHorizontal className="w-4 h-4 text-gray-400 dark:text-slate-500" />
+              <MoreHorizontal className="w-4 h-4 text-[var(--text-secondary)]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-36 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-36 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     setShowDeleteModal(true)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
                 >
                   Delete
                 </button>
@@ -153,35 +168,50 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         </div>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[720px] mx-auto px-6 py-8">
-          {/* Title */}
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={300}
-            placeholder="Entry title…"
-            className="w-full text-2xl font-semibold text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-slate-600 bg-transparent border-none outline-none mb-4"
-          />
+      {/* Entry metadata — title, date, tags. Scrolls away with the page so
+          the toolbar can pin directly above the writing surface. */}
+      <div className="pt-4 space-y-4">
+        {/* Title */}
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={300}
+          placeholder="Entry title…"
+          className="w-full text-2xl font-semibold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-transparent transition-colors"
+        />
 
-          {/* Date */}
-          <input
-            type="date"
-            value={entryDate}
-            onChange={(e) => setEntryDate(e.target.value)}
-            className="text-sm text-gray-500 dark:text-slate-400 bg-transparent border border-[var(--border)] rounded-lg px-3 py-1.5 mb-6 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]"
-          />
-
-          {/* Tags */}
-          <TagInput entryId={entry.entry_id} initialTags={initialTags} />
-
-          {/* Rich-text body editor */}
-          <div className="mt-6">
-            <Tiptap initialContent={initialContent} onChange={handleContentChange} />
-          </div>
+        {/* Date */}
+        <div>
+          <DatePicker value={entryDate} onChange={setEntryDate} max={todayIso} />
         </div>
+
+        {/* Tags */}
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-3 py-2">
+          <TagInput entryId={entry.entry_id} initialTags={initialTags} />
+        </div>
+      </div>
+
+      {/* Sticky toolbar — pins to the top of the scroll container so the
+          formatting controls stay reachable while writing. The save status
+          rides along above it so the user can always see the current save
+          state on long entries. */}
+      {editor && (
+        <div className="sticky top-0 z-20 bg-[var(--bg-page)] pt-4 pb-2 mt-4">
+          <div className="flex justify-end h-5 mb-1">
+            <SaveStatus status={saveStatus} onSaveNow={saveNow} />
+          </div>
+          <EditorToolbar editor={editor} />
+        </div>
+      )}
+
+      {/* Rich-text body editor */}
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg p-4">
+        {editor ? (
+          <EditorContent editor={editor} />
+        ) : (
+          <div className="min-h-[400px]" />
+        )}
       </div>
 
       {/* Conflict dialog */}

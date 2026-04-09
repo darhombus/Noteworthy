@@ -18,7 +18,7 @@ import { Toaster } from 'sonner'
 import Providers from '@/components/Providers'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 const roboto = Roboto({
   subsets: ['latin'],
@@ -94,7 +94,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${roboto.variable} ${openSans.variable} ${lato.variable} ${montserrat.variable} ${oswald.variable} ${raleway.variable} ${merriweather.variable} ${lora.variable} ${playfair.variable} ${garamond.variable} ${baskerville.variable} ${dancing.variable} ${inter.className}`}
+        className={`${inter.variable} ${roboto.variable} ${openSans.variable} ${lato.variable} ${montserrat.variable} ${oswald.variable} ${raleway.variable} ${merriweather.variable} ${lora.variable} ${playfair.variable} ${garamond.variable} ${baskerville.variable} ${dancing.variable} ${inter.className}`}
       >
         <Providers>
           {children}
