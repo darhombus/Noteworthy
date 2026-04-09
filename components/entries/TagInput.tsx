@@ -216,7 +216,7 @@ export default function TagInput({ entryId, initialTags }: TagInputProps) {
   }
 
   return (
-    <div ref={containerRef} className="relative mb-6">
+    <div ref={containerRef} className="relative">
       {/* Tag chips row */}
       {localTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
