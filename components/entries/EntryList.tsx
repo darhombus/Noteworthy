@@ -299,7 +299,11 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     })
 
     if ('error' in result) {
-      toast.error('Could not create entry. Please try again.')
+      // Refresh the page so any entry that was created server-side (despite the
+      // client-side error, e.g. a Supabase timeout) becomes visible rather than
+      // silently duplicated on a retry.
+      router.refresh()
+      toast.error('Could not create entry — the page has been refreshed.')
       setIsCreating(false)
       return
     }

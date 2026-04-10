@@ -31,9 +31,11 @@ export default function DeleteJournalModal({
       setIsDeleting(false)
       return
     }
+    // Close the modal immediately before the router refresh so the user is not
+    // left staring at a frozen "Deleting…" button while the page revalidates.
+    onSuccess()
     toast.success('Journal moved to recycle bin')
     router.refresh()
-    onSuccess()
   }
 
   return (

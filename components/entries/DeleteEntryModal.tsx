@@ -24,6 +24,8 @@ export default function DeleteEntryModal({ entryId, journalId, onClose }: Delete
       setIsDeleting(false)
       return
     }
+    // Close the modal immediately — don't wait for navigation to unmount it.
+    onClose()
     toast.success('Entry moved to recycle bin')
     router.push(`/journals/${journalId}`)
   }
