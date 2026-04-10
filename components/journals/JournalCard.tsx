@@ -8,6 +8,7 @@ import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
 import { getColorBg } from '@/lib/validations/journals'
+import ExportModal from '@/components/ExportModal'
 import type { Database } from '@/types/supabase'
 
 function hexAlpha(hex: string, alpha: string): string {
@@ -31,6 +32,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
   const [mounted, setMounted] = useState(false)
   const [isFav, setIsFav] = useState(journal.is_favorite)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
@@ -151,6 +153,17 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
         </div>
       </div>
 
+      {/* Export modal — portalled to document.body so the card's overflow:hidden
+          and hover transform cannot create a containing block for the fixed overlay */}
+      {mounted && showExportModal && createPortal(
+        <ExportModal
+          scope="journal"
+          journalId={journal.journal_id}
+          onClose={() => setShowExportModal(false)}
+        />,
+        document.body,
+      )}
+
       {/* Dropdown — portal to document.body so overflow-hidden can't clip it */}
       {mounted && menuOpen && menuPos && createPortal(
         <div
@@ -173,6 +186,12 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
             className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
             Edit
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setShowExportModal(true) }}
+            className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            Export journal
           </button>
           <button
             onClick={() => { setMenuOpen(false); onDelete() }}
