@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import DownloadAllButton from '@/components/settings/DownloadAllButton'
 import {
   STORAGE_QUOTA_BYTES,
   formatStorageSize,
@@ -98,6 +99,16 @@ export default async function SettingsPage() {
             space.
           </p>
         ) : null}
+      </section>
+
+      <section className="rounded-xl shadow-sm border border-[#E0E0E0] dark:border-[#3A3A3A] bg-[var(--bg-surface)] p-5">
+        <h2 className="text-base font-semibold text-[var(--text-primary)] mb-1">
+          Privacy &amp; data
+        </h2>
+        <p className="text-sm text-[var(--text-secondary)] mb-4">
+          Export all your journal entries as Markdown or JSON.
+        </p>
+        <DownloadAllButton />
       </section>
     </div>
   )

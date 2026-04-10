@@ -9,6 +9,7 @@ import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import SaveStatus from './SaveStatus'
 import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
+import ExportModal from '@/components/ExportModal'
 import TagInput from './TagInput'
 import DatePicker from './DatePicker'
 import EditorToolbar from '@/components/editor/EditorToolbar'
@@ -51,6 +52,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [entryDate, setEntryDate] = useState(entry.entry_date)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -195,7 +197,16 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
               <MoreHorizontal className="w-4 h-4 text-[var(--text-secondary)]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-36 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-44 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setShowExportModal(true)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+                >
+                  Export entry
+                </button>
                 <button
                   onClick={() => {
                     setMenuOpen(false)
@@ -302,6 +313,15 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
       {/* Image lightbox */}
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+
+      {/* Export modal */}
+      {showExportModal && (
+        <ExportModal
+          scope="entry"
+          entryId={entry.entry_id}
+          onClose={() => setShowExportModal(false)}
+        />
       )}
 
       {/* Delete modal */}
