@@ -7,6 +7,7 @@ import { useUIStore } from '@/store/useUIStore'
 const TITLES: Record<string, string> = {
   '/dashboard':   'Dashboard',
   '/journals':    'Journals',
+  '/analytics':   'Analytics',
   '/tags':        'Tags',
   '/recycle-bin': 'Recycle Bin',
   '/settings':    'Settings',
