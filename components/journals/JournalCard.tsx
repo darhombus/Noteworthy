@@ -170,6 +170,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           ref={dropdownRef}
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
           className="w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1"
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => { setMenuOpen(false); handleFavToggle() }}

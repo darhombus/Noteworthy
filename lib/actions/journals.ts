@@ -77,9 +77,23 @@ export async function deleteJournal(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const now = new Date().toISOString()
+
+  // Cascade: soft-delete all active entries first so that the DB trigger
+  // (trg_journals_rollup_update) fires and zeroes out journals.entry_count /
+  // total_word_count, and so that dashboard/analytics queries which filter
+  // entries on deleted_at IS NULL correctly exclude them.
+  const { error: entriesError } = await supabase
+    .from('entries')
+    .update({ deleted_at: now })
+    .eq('journal_id', id)
+    .is('deleted_at', null)
+
+  if (entriesError) return { error: entriesError.message }
+
   const { error } = await supabase
     .from('journals')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq('journal_id', id)
     .eq('user_id', user.id)
 

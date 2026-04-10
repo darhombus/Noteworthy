@@ -219,6 +219,7 @@ export default function EntryCard({
           ref={dropdownRef}
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
           className="w-36 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1"
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => { setMenuOpen(false); handlePinToggle() }}
