@@ -21,6 +21,8 @@ export type Database = {
           entry_id: string
           is_pinned: boolean
           journal_id: string
+          lock_hash: string | null
+          lock_type: string
           title: string | null
           updated_at: string
           word_count: number
@@ -33,6 +35,8 @@ export type Database = {
           entry_id?: string
           is_pinned?: boolean
           journal_id: string
+          lock_hash?: string | null
+          lock_type?: string
           title?: string | null
           updated_at?: string
           word_count?: number
@@ -45,6 +49,8 @@ export type Database = {
           entry_id?: string
           is_pinned?: boolean
           journal_id?: string
+          lock_hash?: string | null
+          lock_type?: string
           title?: string | null
           updated_at?: string
           word_count?: number
@@ -102,6 +108,8 @@ export type Database = {
           icon: string
           is_favorite: boolean
           journal_id: string
+          lock_hash: string | null
+          lock_type: string
           title: string
           total_word_count: number
           updated_at: string
@@ -116,6 +124,8 @@ export type Database = {
           icon?: string
           is_favorite?: boolean
           journal_id?: string
+          lock_hash?: string | null
+          lock_type?: string
           title: string
           total_word_count?: number
           updated_at?: string
@@ -130,6 +140,8 @@ export type Database = {
           icon?: string
           is_favorite?: boolean
           journal_id?: string
+          lock_hash?: string | null
+          lock_type?: string
           title?: string
           total_word_count?: number
           updated_at?: string

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createEntry } from '@/lib/actions/entries'
@@ -17,6 +17,7 @@ function hexAlpha(hex: string, alpha: string): string {
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r}, ${g}, ${b}, ${(parseInt(alpha, 16) / 255).toFixed(3)})`
 }
+import BookIcon from '@/components/ui/BookIcon'
 import { useDebounce } from '@/hooks/useDebounce'
 import EntryCard from './EntryCard'
 import DeleteEntryModal from './DeleteEntryModal'
@@ -212,13 +213,32 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   // Tag-only mode: no text query but the user has typed at least one #pattern
   const isTagFilterActive = debouncedTagNames.length > 0 && debouncedText.trim().length === 0
 
-  // Client-side filtered entries for tag-only mode (ANY matching tag).
-  // If the pattern exists but no tag name contains it, returns empty list.
-  const tagFilteredEntries = isTagFilterActive
-    ? (parsedTagIds.length > 0
-        ? entries.filter((e) => parsedTagIds.some((tid) => e.tags?.some((t) => t.tag_id === tid)))
-        : [])
-    : entries
+  // Client-side filtered entries — applies tag, date, and pinned filters.
+  const tagFilteredEntries = (() => {
+    let result = entries
+
+    // Tag filter (partial name match)
+    if (isTagFilterActive) {
+      result = parsedTagIds.length > 0
+        ? result.filter((e) => parsedTagIds.some((tid) => e.tags?.some((t) => t.tag_id === tid)))
+        : []
+    }
+
+    // Pinned only
+    if (pinnedOnly) {
+      result = result.filter((e) => e.is_pinned)
+    }
+
+    // Date range — entry_date is 'YYYY-MM-DD', string comparison is safe
+    if (fromDate) {
+      result = result.filter((e) => e.entry_date >= fromDate)
+    }
+    if (toDate) {
+      result = result.filter((e) => e.entry_date <= toDate)
+    }
+
+    return result
+  })()
 
   // Run search when debounced query or filters change
   useEffect(() => {
@@ -288,6 +308,31 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     setSearchFetched(false)
   }
 
+  function setDatePreset(preset: 'today' | 'week' | 'month' | 'year') {
+    const now = new Date()
+    const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+    switch (preset) {
+      case 'today': {
+        const d = fmt(now)
+        setFromDate(d)
+        setToDate(d)
+        break
+      }
+      case 'week':
+        setFromDate(fmt(startOfWeek(now, { weekStartsOn: 1 })))
+        setToDate(fmt(endOfWeek(now, { weekStartsOn: 1 })))
+        break
+      case 'month':
+        setFromDate(fmt(startOfMonth(now)))
+        setToDate(fmt(endOfMonth(now)))
+        break
+      case 'year':
+        setFromDate(fmt(startOfYear(now)))
+        setToDate(fmt(endOfYear(now)))
+        break
+    }
+  }
+
   async function handleNewEntry() {
     if (isCreating) return
     setIsCreating(true)
@@ -314,6 +359,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   const isTextSearchActive = debouncedText.trim().length > 0
   const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly)
   const hasActiveFilters = hasDatePinFilters || liveTagNames.length > 0
+  const isAnyClientFilterActive = isTagFilterActive || hasDatePinFilters
   const showSearchEmpty = searchFetched && searchResults.length === 0 && !isSearching
 
   return (
@@ -329,15 +375,12 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         }}
       >
         <div className="flex items-start gap-5">
-          {/* Emoji bubble */}
+          {/* Book icon */}
           <div
-            className="flex items-center justify-center w-[68px] h-[68px] rounded-[18px] text-[34px] shrink-0"
-            style={{
-              background: emojiBg,
-              boxShadow: `0 6px 20px ${hexAlpha(accent, '30')}`,
-            }}
+            className="shrink-0"
+            style={{ filter: `drop-shadow(0 6px 16px ${hexAlpha(accent, '40')})` }}
           >
-            {journal.icon}
+            <BookIcon color={accent} size={68} />
           </div>
 
           {/* Info + action */}
@@ -428,41 +471,72 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </p>
         )}
 
-        {/* Filter row — date and pinned only */}
-        <div className="flex items-center flex-wrap gap-2">
-          {/* From date */}
-          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <span>From</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-            />
-          </label>
+        {/* Filter row — date presets + custom range + pinned */}
+        <div className="flex flex-col gap-2">
+          {/* Quick date presets */}
+          <div className="flex items-center flex-wrap gap-1.5">
+            <span className="text-xs text-[var(--text-secondary)] mr-0.5">Date:</span>
+            {(['today', 'week', 'month', 'year'] as const).map((preset) => {
+              const labels = { today: 'Today', week: 'This week', month: 'This month', year: 'This year' }
+              const now = new Date()
+              const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+              const presetRanges = {
+                today: { from: fmt(now), to: fmt(now) },
+                week: { from: fmt(startOfWeek(now, { weekStartsOn: 1 })), to: fmt(endOfWeek(now, { weekStartsOn: 1 })) },
+                month: { from: fmt(startOfMonth(now)), to: fmt(endOfMonth(now)) },
+                year: { from: fmt(startOfYear(now)), to: fmt(endOfYear(now)) },
+              }
+              const isActive = fromDate === presetRanges[preset].from && toDate === presetRanges[preset].to
+              return (
+                <button
+                  key={preset}
+                  onClick={() => isActive ? (setFromDate(''), setToDate('')) : setDatePreset(preset)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
+                    isActive
+                      ? 'bg-[#1976D2] text-white border-[#1976D2]'
+                      : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
+                  }`}
+                >
+                  {labels[preset]}
+                </button>
+              )
+            })}
 
-          {/* To date */}
-          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <span>To</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-            />
-          </label>
+            {/* Divider */}
+            <span className="text-[var(--border)] select-none">|</span>
 
-          {/* Pinned only */}
-          <button
-            onClick={() => setPinnedOnly((v) => !v)}
-            className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
-              pinnedOnly
-                ? 'bg-[#1976D2] text-white border-[#1976D2]'
-                : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
-            }`}
-          >
-            Pinned only
-          </button>
+            {/* Custom range */}
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <span>From</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <span>To</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
+              />
+            </label>
+
+            {/* Pinned only */}
+            <button
+              onClick={() => setPinnedOnly((v) => !v)}
+              className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
+                pinnedOnly
+                  ? 'bg-[#1976D2] text-white border-[#1976D2]'
+                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
+              }`}
+            >
+              Pinned only
+            </button>
+          </div>
         </div>
 
         {/* Active filter chips */}
@@ -562,7 +636,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
               className="text-base font-bold text-[var(--text-primary)]"
               style={{ letterSpacing: '-0.2px' }}
             >
-              {isTagFilterActive ? 'Filtered Entries' : 'All Entries'}
+              {isAnyClientFilterActive ? 'Filtered Entries' : 'All Entries'}
             </h2>
             <span className="text-xs text-[var(--text-muted)]">
               {tagFilteredEntries.length} {tagFilteredEntries.length === 1 ? 'entry' : 'entries'}
@@ -570,17 +644,17 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </div>
 
           {tagFilteredEntries.length === 0 ? (
-            isTagFilterActive ? (
+            isAnyClientFilterActive ? (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
                 <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A]" />
                 <p className="text-base text-[var(--text-secondary)]">
-                  No entries with {liveTagNames.map((n) => `#${n}`).join(', ')}
+                  No entries match the active filters
                 </p>
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={clearAllFilters}
                   className="text-sm text-[#1976D2] hover:underline"
                 >
-                  Clear filter
+                  Clear filters
                 </button>
               </div>
             ) : (

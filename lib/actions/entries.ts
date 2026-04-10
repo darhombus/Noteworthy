@@ -169,5 +169,6 @@ export async function togglePin(
 
   if (error) return { error: error.message }
 
+  revalidatePath('/journals', 'layout')
   return { success: true }
 }

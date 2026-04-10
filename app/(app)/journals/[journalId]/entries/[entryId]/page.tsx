@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import EntryEditor from '@/components/entries/EntryEditor'
+import LockGate from '@/components/lock/LockGate'
 
 interface EntryPageProps {
   params: Promise<{ journalId: string; entryId: string }>
@@ -45,11 +46,18 @@ export default async function EntryPage({ params }: EntryPageProps) {
     .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
 
   return (
-    <EntryEditor
-      key={entry.entry_id}
-      entry={entry}
-      journal={journal}
-      initialTags={initialTags}
-    />
+    <LockGate
+      lockType={entry.lock_type as 'none' | 'pin' | 'password'}
+      entityId={entry.entry_id}
+      entityType="entry"
+      entityName={entry.title ?? undefined}
+    >
+      <EntryEditor
+        key={entry.entry_id}
+        entry={entry}
+        journal={journal}
+        initialTags={initialTags}
+      />
+    </LockGate>
   )
 }

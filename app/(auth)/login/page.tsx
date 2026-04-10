@@ -82,12 +82,12 @@ export default function LoginPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD]">
                   Password
                 </label>
-                <span
-                  className="text-xs text-gray-400 dark:text-slate-500 cursor-not-allowed select-none"
-                  title="Password reset coming soon"
+                <Link
+                  href="/reset-password"
+                  className="text-xs text-[#1976D2] hover:underline"
                 >
                   Forgot password?
-                </span>
+                </Link>
               </div>
               <div className="relative">
                 <input

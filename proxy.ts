@@ -40,8 +40,15 @@ export async function proxy(request: NextRequest) {
     // If the user has an active Supabase session but the remember-me flag is absent,
     // the browser was closed since their last login (session cookie expired).
     // Sign them out so they are required to log in again.
+    //
+    // Exception: /update-password is reached via a Supabase password-reset link.
+    // The callback creates a temporary session for the reset flow, but the
+    // remember-me cookie is never set in that path. Skip the eviction so the
+    // user can actually reach the form and set their new password.
     const rememberMe = request.cookies.get('nw_remember_me')
-    if (!rememberMe) {
+    const isPasswordResetFlow = pathname === '/update-password'
+
+    if (!rememberMe && !isPasswordResetFlow) {
       await supabase.auth.signOut()
       const url = request.nextUrl.clone()
       url.pathname = '/login'

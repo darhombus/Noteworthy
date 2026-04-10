@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { X, BookOpen, ChevronDown, Palette } from 'lucide-react'
+import { X, BookOpen, ChevronDown, Palette, ShieldCheck } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createJournal, updateJournal } from '@/lib/actions/journals'
@@ -15,7 +15,10 @@ import {
   getColorBg,
   getColorLabel,
   type CreateJournalInput,
+  type LockType,
 } from '@/lib/validations/journals'
+import BookIcon from '@/components/ui/BookIcon'
+import LockPicker from '@/components/lock/LockPicker'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
@@ -34,6 +37,10 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   const isEdit = !!journal
 
   const [colorOpen, setColorOpen] = useState(false)
+  const [lockType, setLockType] = useState<LockType>(
+    (journal?.lock_type as LockType | undefined) ?? 'none',
+  )
+  const [lockSecret, setLockSecret] = useState('')
 
   const {
     register,
@@ -52,11 +59,11 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       icon: (JOURNAL_ICONS.includes(journal?.icon as EmojiIcon)
         ? journal!.icon
         : JOURNAL_ICONS[0]) as EmojiIcon,
+      lock_type: (journal?.lock_type as LockType | undefined) ?? 'none',
     },
   })
 
   const selectedColor = watch('color')
-  const selectedIcon = watch('icon')
   const titleValue = watch('title') ?? ''
   const descValue = watch('description') ?? ''
 
@@ -64,10 +71,31 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   const colorLabel = getColorLabel(selectedColor)
   const emojiBg = isDark ? `${selectedColor}25` : colorBg
 
+  function handleLockChange(type: LockType, secret: string) {
+    setLockType(type)
+    setLockSecret(secret)
+    setValue('lock_type', type)
+  }
+
   async function onSubmit(data: CreateJournalInput) {
+    // Validate that secret is set when lock type requires it
+    if (data.lock_type !== 'none') {
+      const pinFull = lockType === 'pin' && lockSecret.length === 4
+      const passFull = lockType === 'password' && lockSecret.length >= 1
+      if (!pinFull && !passFull) {
+        toast.error(
+          lockType === 'pin'
+            ? 'Please enter all 4 PIN digits'
+            : 'Please enter a password',
+        )
+        return
+      }
+    }
+
+    const secret = data.lock_type !== 'none' ? lockSecret : undefined
     const result = isEdit
-      ? await updateJournal(journal.journal_id, data)
-      : await createJournal(data)
+      ? await updateJournal(journal.journal_id, data, secret)
+      : await createJournal(data, secret)
 
     if ('error' in result) {
       toast.error(result.error)
@@ -87,7 +115,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       }}
     >
       <div
-        className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif]"
+        className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif] max-h-[90vh] overflow-y-auto"
         style={{
           boxShadow: isDark
             ? '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)'
@@ -129,88 +157,56 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="px-6 pt-[22px] pb-4 flex flex-col gap-[18px]">
 
-            {/* Row 1: Icon picker + Color picker */}
-            <div className="flex gap-3">
-              {/* Icon picker */}
-              <div className="shrink-0">
-                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2" style={{ letterSpacing: '0.5px' }}>
-                  Icon
-                </p>
-                <div className="flex flex-wrap gap-1.5" style={{ maxWidth: 184 }}>
-                  {JOURNAL_ICONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => setValue('icon', emoji)}
-                      className="flex items-center justify-center w-9 h-9 rounded-lg text-lg transition-colors"
-                      style={{
-                        border: selectedIcon === emoji
-                          ? `2px solid ${selectedColor}`
-                          : `1px solid ${isDark ? '#3A3A3A' : '#E0E0E0'}`,
-                        background: selectedIcon === emoji
-                          ? emojiBg
-                          : isDark ? '#333333' : '#EEEEEE',
-                      }}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Color picker */}
+            <div>
+              <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1" style={{ letterSpacing: '0.5px' }}>
+                <Palette size={11} />
+                Cover Color
+              </p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setColorOpen((prev) => !prev)}
+                  className="w-full flex items-center gap-2 px-3 py-[9px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] hover:bg-[#E5E5E5] dark:hover:bg-[#404040] transition-colors"
+                >
+                  <span
+                    className="inline-block w-[18px] h-[18px] rounded-full shrink-0"
+                    style={{ background: selectedColor }}
+                  />
+                  <span className="flex-1 text-left text-[var(--text-primary)] text-[13px]">
+                    {colorLabel}
+                  </span>
+                  <ChevronDown
+                    size={13}
+                    className={`text-[#9E9E9E] transition-transform duration-200 ${colorOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
 
-              {/* Color picker */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1" style={{ letterSpacing: '0.5px' }}>
-                  <Palette size={11} />
-                  Cover Color
-                </p>
-                <div className="relative">
-                  {/* Trigger */}
-                  <button
-                    type="button"
-                    onClick={() => setColorOpen((prev) => !prev)}
-                    className="w-full flex items-center gap-2 px-3 py-[9px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] hover:bg-[#E5E5E5] dark:hover:bg-[#404040] transition-colors"
-                  >
-                    <span
-                      className="inline-block w-[18px] h-[18px] rounded-full shrink-0"
-                      style={{ background: selectedColor }}
-                    />
-                    <span className="flex-1 text-left text-[var(--text-primary)] text-[13px]">
-                      {colorLabel}
-                    </span>
-                    <ChevronDown
-                      size={13}
-                      className={`text-[#9E9E9E] transition-transform duration-200 ${colorOpen ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-
-                  {/* Dropdown */}
-                  {colorOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-1 p-2 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border)] z-10 shadow-lg">
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {COLOR_DEFS.map((c) => (
-                          <button
-                            key={c.value}
-                            type="button"
-                            onClick={() => {
-                              setValue('color', c.value as CreateJournalInput['color'])
-                              setColorOpen(false)
-                            }}
-                            className="flex flex-col items-center gap-1 p-1.5 rounded-lg hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A] transition-colors"
-                          >
-                            <span
-                              className="inline-block w-[22px] h-[22px] rounded-full"
-                              style={{ background: c.value }}
-                            />
-                            <span className="text-[9px] text-[var(--text-muted)]">
-                              {c.label}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
+                {colorOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 p-2 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border)] z-10 shadow-lg">
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {COLOR_DEFS.map((c) => (
+                        <button
+                          key={c.value}
+                          type="button"
+                          onClick={() => {
+                            setValue('color', c.value as CreateJournalInput['color'])
+                            setColorOpen(false)
+                          }}
+                          className="flex flex-col items-center gap-1 p-1.5 rounded-lg hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A] transition-colors"
+                        >
+                          <span
+                            className="inline-block w-[22px] h-[22px] rounded-full"
+                            style={{ background: c.value }}
+                          />
+                          <span className="text-[9px] text-[var(--text-muted)]">
+                            {c.label}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -220,18 +216,8 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               style={{ background: isDark ? '#2A2A2A' : '#F8F9FA' }}
             >
               {/* Book thumbnail */}
-              <div
-                className="relative flex items-center justify-center w-[52px] h-16 rounded-lg shrink-0 text-[22px]"
-                style={{
-                  background: `linear-gradient(160deg, ${selectedColor}CC, ${selectedColor})`,
-                  boxShadow: `0 4px 12px ${selectedColor}55`,
-                }}
-              >
-                <div
-                  className="absolute left-0 top-0 bottom-0 w-[5px] rounded-l-lg opacity-30"
-                  style={{ background: '#000' }}
-                />
-                <span>{selectedIcon}</span>
+              <div className="shrink-0">
+                <BookIcon color={selectedColor} size={52} />
               </div>
 
               {/* Meta */}
@@ -295,6 +281,25 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               />
               {errors.description && (
                 <p className="mt-1 text-xs text-red-500">{errors.description.message}</p>
+              )}
+            </div>
+
+            {/* Security / Lock section */}
+            <div>
+              <p
+                className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1"
+                style={{ letterSpacing: '0.5px' }}
+              >
+                <ShieldCheck size={11} />
+                Security
+              </p>
+              <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)]">
+                <LockPicker lockType={lockType} onChange={handleLockChange} />
+              </div>
+              {isEdit && journal?.lock_type !== 'none' && lockType !== 'none' && !lockSecret && (
+                <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">
+                  Leave the {journal.lock_type === 'pin' ? 'PIN' : 'password'} field empty to keep the existing lock unchanged.
+                </p>
               )}
             </div>
           </div>
