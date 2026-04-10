@@ -1,6 +1,6 @@
 # Noteworthy
 
-A private digital journaling web app built with Next.js, Supabase, and BlockNote.
+A private digital journaling web app built with Next.js, Supabase, and Tiptap.
 
 ## Getting Started
 
@@ -15,6 +15,6 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 
 - **Framework**: Next.js 16 (App Router)
 - **Database**: Supabase (Postgres + Auth + Storage)
-- **Editor**: BlockNote
+- **Editor**: Tiptap
 - **Styling**: Tailwind CSS v3
 - **Language**: TypeScript (strict mode)
