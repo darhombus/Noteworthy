@@ -6,6 +6,7 @@ import { useEffect, useTransition } from 'react'
 import {
   LayoutDashboard,
   BookOpen,
+  BarChart2,
   Tag,
   Trash2,
   Settings,
@@ -29,6 +30,7 @@ interface SidebarProps {
 const NAV_ITEMS = [
   { href: '/dashboard',   label: 'Dashboard',   Icon: LayoutDashboard },
   { href: '/journals',    label: 'Journals',     Icon: BookOpen },
+  { href: '/analytics',   label: 'Analytics',   Icon: BarChart2 },
   { href: '/tags',        label: 'Tags',         Icon: Tag },
   { href: '/recycle-bin', label: 'Recycle Bin',  Icon: Trash2 },
   { href: '/settings',    label: 'Settings',     Icon: Settings },
