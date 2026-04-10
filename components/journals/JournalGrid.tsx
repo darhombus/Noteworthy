@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { BookOpen } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { BookOpen, Star, ArrowDownAZ, Clock, RefreshCw } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 import type { Database } from '@/types/supabase'
 import JournalCard from './JournalCard'
@@ -11,12 +11,14 @@ import DeleteJournalModal from './DeleteJournalModal'
 type Journal = Database['public']['Tables']['journals']['Row']
 type SortOption = 'favourites' | 'az' | 'newest' | 'updated'
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'favourites', label: 'Favourites first' },
-  { value: 'az', label: 'A–Z' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'updated', label: 'Last updated' },
+const SORT_OPTIONS: { value: SortOption; label: string; icon: React.ReactNode }[] = [
+  { value: 'favourites', label: 'Favourites', icon: <Star size={12} /> },
+  { value: 'az', label: 'A–Z', icon: <ArrowDownAZ size={12} /> },
+  { value: 'newest', label: 'Newest', icon: <Clock size={12} /> },
+  { value: 'updated', label: 'Updated', icon: <RefreshCw size={12} /> },
 ]
+
+const STORAGE_KEY = 'noteworthy:journalSort'
 
 function sortJournals(journals: Journal[], sort: SortOption): Journal[] {
   return [...journals].sort((a, b) => {
@@ -44,29 +46,50 @@ export default function JournalGrid({ journals }: JournalGridProps) {
   const [deleteJournal, setDeleteJournal] = useState<Journal | null>(null)
   const { createJournalOpen, setCreateJournalOpen } = useUIStore()
 
+  // Restore persisted sort preference on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY) as SortOption | null
+    if (saved && SORT_OPTIONS.some((o) => o.value === saved)) {
+      setSort(saved)
+    }
+  }, [])
+
+  function handleSort(value: SortOption) {
+    setSort(value)
+    localStorage.setItem(STORAGE_KEY, value)
+  }
+
   const sorted = useMemo(() => sortJournals(journals, sort), [journals, sort])
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-[var(--text-primary)]">Journals</h1>
           <p className="text-sm text-[var(--text-secondary)] mt-0.5">
             {journals.length} journal{journals.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortOption)}
-          className="text-sm border border-[var(--border)] rounded-lg px-3 py-1.5 bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[#1976D2]"
-        >
+
+        {/* Sort toggle group */}
+        <div className="flex items-center gap-0.5 p-0.5 bg-[var(--bg-muted)] border border-[var(--border)] rounded-xl">
           {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
+            <button
+              key={o.value}
+              onClick={() => handleSort(o.value)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-medium transition-all ${
+                sort === o.value
+                  ? 'bg-[var(--bg-surface)] text-[#1976D2] shadow-sm border border-[var(--border)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+              aria-pressed={sort === o.value}
+            >
+              {o.icon}
               {o.label}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* Empty state */}

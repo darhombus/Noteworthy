@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import EntryList from '@/components/entries/EntryList'
+import LockGate from '@/components/lock/LockGate'
 
 interface JournalPageProps {
   params: Promise<{ journalId: string }>
@@ -46,5 +47,14 @@ export default async function JournalPage({ params }: JournalPageProps) {
     return { ...rest, tags }
   })
 
-  return <EntryList journal={journal} entries={entries} />
+  return (
+    <LockGate
+      lockType={journal.lock_type as 'none' | 'pin' | 'password'}
+      entityId={journal.journal_id}
+      entityType="journal"
+      entityName={journal.title}
+    >
+      <EntryList journal={journal} entries={entries} />
+    </LockGate>
+  )
 }

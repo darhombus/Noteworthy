@@ -9,12 +9,14 @@ import {
   type CreateJournalInput,
   type UpdateJournalInput,
 } from '@/lib/validations/journals'
+import { hashSecret } from '@/lib/utils/lockCrypto'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
 
 export async function createJournal(
   data: CreateJournalInput,
+  lockSecret?: string,
 ): Promise<{ journal: Journal } | { error: string }> {
   const parsed = createJournalSchema.safeParse(data)
   if (!parsed.success) {
@@ -27,9 +29,12 @@ export async function createJournal(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const lockHash =
+    parsed.data.lock_type !== 'none' && lockSecret ? hashSecret(lockSecret) : null
+
   const { data: journal, error } = await supabase
     .from('journals')
-    .insert({ ...parsed.data, user_id: user.id })
+    .insert({ ...parsed.data, user_id: user.id, lock_hash: lockHash })
     .select()
     .single()
 
@@ -42,6 +47,7 @@ export async function createJournal(
 export async function updateJournal(
   id: string,
   data: UpdateJournalInput,
+  lockSecret?: string,
 ): Promise<{ journal: Journal } | { error: string }> {
   const parsed = updateJournalSchema.safeParse(data)
   if (!parsed.success) {
@@ -54,9 +60,19 @@ export async function updateJournal(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Only update lock_hash when lock_type is being set and a new secret is supplied.
+  // If lock_type is 'none', clear the hash. If lock_type changes but no new secret
+  // is provided (e.g. edit without changing the lock), leave lock_hash as-is.
+  const lockUpdate: { lock_hash?: string | null } = {}
+  if (parsed.data.lock_type === 'none') {
+    lockUpdate.lock_hash = null
+  } else if (parsed.data.lock_type && lockSecret) {
+    lockUpdate.lock_hash = hashSecret(lockSecret)
+  }
+
   const { data: journal, error } = await supabase
     .from('journals')
-    .update(parsed.data)
+    .update({ ...parsed.data, ...lockUpdate })
     .eq('journal_id', id)
     .eq('user_id', user.id)
     .select()

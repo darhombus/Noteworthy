@@ -1,115 +1,94 @@
 import { createClient } from '@/lib/supabase/server'
-import DownloadAllButton from '@/components/settings/DownloadAllButton'
 import {
   STORAGE_QUOTA_BYTES,
-  formatStorageSize,
   getUserStorageUsage,
 } from '@/lib/storage/quota'
+import SettingsTabs from '@/components/settings/SettingsTabs'
+import AccountTab from '@/components/settings/AccountTab'
+import PreferencesTab from '@/components/settings/PreferencesTab'
+import PrivacyTab from '@/components/settings/PrivacyTab'
+import type { UserPreferences } from '@/lib/actions/settings'
 
-export default async function SettingsPage() {
+type Tab = 'account' | 'preferences' | 'privacy'
+
+interface Props {
+  searchParams: Promise<{ tab?: string }>
+}
+
+export default async function SettingsPage({ searchParams }: Props) {
+  const { tab: rawTab } = await searchParams
+  const tab: Tab =
+    rawTab === 'preferences' || rawTab === 'privacy' ? rawTab : 'account'
+
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const currentUsage = user ? await getUserStorageUsage(user.id) : 0
-  const limit = STORAGE_QUOTA_BYTES
-  const percentUsed = Math.round((currentUsage / limit) * 1000) / 10
+  if (!user) return null
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url, preferences')
+    .eq('user_id', user.id)
+    .single()
+
+  const preferences: UserPreferences =
+    profile?.preferences &&
+    typeof profile.preferences === 'object' &&
+    !Array.isArray(profile.preferences)
+      ? (profile.preferences as UserPreferences)
+      : {}
+
+  // Storage usage (needed for privacy tab)
+  const currentUsage = await getUserStorageUsage(user.id)
+  const storageLimit = STORAGE_QUOTA_BYTES
 
   // Image vs video breakdown
   let imageUsage = 0
   let videoUsage = 0
-  if (user) {
-    const { data: breakdown } = await supabase
-      .from('media')
-      .select(
-        'file_type, file_size, entries!inner(journal_id, journals!inner(user_id))',
-      )
-      .eq('entries.journals.user_id', user.id)
+  const { data: breakdown } = await supabase
+    .from('media')
+    .select('file_type, file_size, entries!inner(journal_id, journals!inner(user_id))')
+    .eq('entries.journals.user_id', user.id)
 
-    if (breakdown) {
-      for (const row of breakdown) {
-        const size = Number(row.file_size ?? 0)
-        if (row.file_type === 'video') {
-          videoUsage += size
-        } else {
-          imageUsage += size
-        }
-      }
+  if (breakdown) {
+    for (const row of breakdown) {
+      const size = Number(row.file_size ?? 0)
+      if (row.file_type === 'video') videoUsage += size
+      else imageUsage += size
     }
   }
 
-  // Warning thresholds: yellow at 80% (160 MB), red at 95% (190 MB)
-  const approaching = currentUsage > 0.8 * limit
-  const almostFull = currentUsage > 0.95 * limit
-
-  const barColor = almostFull
-    ? 'bg-red-500'
-    : approaching
-      ? 'bg-yellow-500'
-      : 'bg-green-500'
-
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold text-[var(--text-primary)]">Settings</h1>
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-semibold text-[#212121] dark:text-[#F5F5F5]">
+        Settings
+      </h1>
 
-      <section className="rounded-xl shadow-sm border border-[#E0E0E0] dark:border-[#3A3A3A] bg-[var(--bg-surface)] p-5">
-        <h2 className="text-base font-semibold text-[var(--text-primary)] mb-3">
-          Storage usage
-        </h2>
+      <SettingsTabs activeTab={tab} />
 
-        {/* Total bar */}
-        <div className="flex items-center justify-between text-sm text-[var(--text-secondary)] mb-2">
-          <span>
-            {formatStorageSize(currentUsage)} of {formatStorageSize(limit)} used
-          </span>
-          <span>{percentUsed}%</span>
-        </div>
+      {tab === 'account' && (
+        <AccountTab
+          userId={user.id}
+          email={user.email ?? ''}
+          fullName={profile?.full_name ?? ''}
+          avatarUrl={profile?.avatar_url ?? null}
+        />
+      )}
 
-        <div className="h-2 w-full rounded-full bg-[var(--bg-muted)] overflow-hidden">
-          <div
-            className={`h-full ${barColor} transition-all`}
-            style={{ width: `${Math.min(100, percentUsed)}%` }}
-          />
-        </div>
+      {tab === 'preferences' && (
+        <PreferencesTab preferences={preferences} />
+      )}
 
-        {/* Breakdown */}
-        <div className="mt-3 flex gap-6 text-xs text-[var(--text-secondary)]">
-          <span>
-            Images:{' '}
-            <span className="font-medium text-[var(--text-primary)]">
-              {formatStorageSize(imageUsage)}
-            </span>
-          </span>
-          <span>
-            Videos:{' '}
-            <span className="font-medium text-[var(--text-primary)]">
-              {formatStorageSize(videoUsage)}
-            </span>
-          </span>
-        </div>
-
-        {almostFull ? (
-          <p className="mt-3 text-sm text-red-600 dark:text-red-400">
-            You are almost out of storage. Delete existing media to continue uploading.
-          </p>
-        ) : approaching ? (
-          <p className="mt-3 text-sm text-yellow-700 dark:text-yellow-400">
-            You are approaching your storage limit. Consider deleting old media to free up
-            space.
-          </p>
-        ) : null}
-      </section>
-
-      <section className="rounded-xl shadow-sm border border-[#E0E0E0] dark:border-[#3A3A3A] bg-[var(--bg-surface)] p-5">
-        <h2 className="text-base font-semibold text-[var(--text-primary)] mb-1">
-          Privacy &amp; data
-        </h2>
-        <p className="text-sm text-[var(--text-secondary)] mb-4">
-          Export all your journal entries as Markdown or JSON.
-        </p>
-        <DownloadAllButton />
-      </section>
+      {tab === 'privacy' && (
+        <PrivacyTab
+          currentUsage={currentUsage}
+          storageLimit={storageLimit}
+          imageUsage={imageUsage}
+          videoUsage={videoUsage}
+        />
+      )}
     </div>
   )
 }

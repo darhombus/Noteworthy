@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { MoreHorizontal, Calendar, Star } from 'lucide-react'
+import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
-import { getColorBg } from '@/lib/validations/journals'
 import ExportModal from '@/components/ExportModal'
+import BookIcon from '@/components/ui/BookIcon'
 import type { Database } from '@/types/supabase'
 
 function hexAlpha(hex: string, alpha: string): string {
@@ -39,9 +39,12 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
   useEffect(() => { setMounted(true) }, [])
 
+  // Keep local fav state in sync when server sends fresh prop after revalidation
+  useEffect(() => { setIsFav(journal.is_favorite) }, [journal.is_favorite])
+
   const isDark = mounted && resolvedTheme === 'dark'
   const accent = journal.color ?? '#1976D2'
-  const emojiBg = isDark ? hexAlpha(accent, '25') : getColorBg(accent)
+  const emojiBg = isDark ? hexAlpha(accent, '25') : hexAlpha(accent, '15')
 
   useEffect(() => {
     if (!menuOpen) return
@@ -67,6 +70,8 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     if ('error' in result) {
       setIsFav(prev)
       toast.error('Failed to update favourite')
+    } else {
+      router.refresh()
     }
   }
 
@@ -102,12 +107,9 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
       <div className="px-5 pt-5 pb-[18px]">
         {/* Top row */}
         <div className="flex items-start gap-3.5 mb-4">
-          {/* Emoji bubble */}
-          <div
-            className="flex items-center justify-center w-[52px] h-[52px] rounded-[14px] text-2xl shrink-0"
-            style={{ background: emojiBg }}
-          >
-            {journal.icon}
+          {/* Book icon */}
+          <div className="shrink-0">
+            <BookIcon color={accent} size={52} />
           </div>
 
           {/* Title + description */}
@@ -169,36 +171,44 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
         <div
           ref={dropdownRef}
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1"
+          className="w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => { setMenuOpen(false); handleFavToggle() }}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
             <Star
               size={14}
-              className={isFav ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
+              className={isFav ? 'fill-amber-400 text-amber-400 shrink-0' : 'text-[#9E9E9E] shrink-0'}
             />
-            {isFav ? 'Remove favourite' : 'Add to favourites'}
+            <span>{isFav ? 'Remove favourite' : 'Add to favourites'}</span>
           </button>
+
           <button
             onClick={() => { setMenuOpen(false); onEdit() }}
-            className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
-            Edit
+            <Pencil size={14} className="text-[#9E9E9E] shrink-0" />
+            <span>Edit journal</span>
           </button>
+
           <button
             onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setShowExportModal(true) }}
-            className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
-            Export journal
+            <Download size={14} className="text-[#9E9E9E] shrink-0" />
+            <span>Export journal</span>
           </button>
+
+          <div className="my-1 border-t border-[var(--border)]" />
+
           <button
             onClick={() => { setMenuOpen(false); onDelete() }}
-            className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
           >
-            Delete
+            <Trash2 size={14} className="shrink-0" />
+            <span>Delete journal</span>
           </button>
         </div>,
         document.body,

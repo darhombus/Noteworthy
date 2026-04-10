@@ -77,6 +77,12 @@ export async function updatePasswordAction(
 
   if (error) return { error: error.message }
 
+  // Sign out immediately so the user proves ownership of the new password
+  // by logging in normally. Also clear the remember-me cookie if present.
+  await supabase.auth.signOut()
+  const cookieStore = await cookies()
+  cookieStore.delete('nw_remember_me')
+
   return { success: true }
 }
 

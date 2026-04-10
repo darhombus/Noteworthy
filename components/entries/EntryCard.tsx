@@ -84,6 +84,8 @@ export default function EntryCard({
     if ('error' in result) {
       setIsPinned(prev)
       toast.error('Failed to update pin')
+    } else {
+      router.refresh()
     }
   }
 

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, MoreHorizontal, Lock, LockOpen } from 'lucide-react'
 import { EditorContent } from '@tiptap/react'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
@@ -17,6 +17,9 @@ import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
 import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
+import LockPicker, { type LockType } from '@/components/lock/LockPicker'
+import { setLock } from '@/lib/actions/lock'
+import { toast } from 'sonner'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
@@ -55,7 +58,13 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [showExportModal, setShowExportModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
+  const [showLockPanel, setShowLockPanel] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const [entryLockType, setEntryLockType] = useState<LockType>(
+    (entry.lock_type as LockType | undefined) ?? 'none',
+  )
+  const [lockSecret, setLockSecret] = useState('')
+  const [isSavingLock, setIsSavingLock] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -155,6 +164,27 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     return () => dom.removeEventListener('click', onClick)
   }, [editor])
 
+  async function handleSaveLock() {
+    if (entryLockType !== 'none') {
+      const pinFull = entryLockType === 'pin' && lockSecret.length === 4
+      const passFull = entryLockType === 'password' && lockSecret.length >= 1
+      if (!pinFull && !passFull) {
+        toast.error(entryLockType === 'pin' ? 'Please enter all 4 PIN digits' : 'Please enter a password')
+        return
+      }
+    }
+    setIsSavingLock(true)
+    const result = await setLock(entry.entry_id, 'entry', entryLockType, lockSecret || undefined)
+    setIsSavingLock(false)
+    if ('error' in result) {
+      toast.error('Failed to update lock')
+    } else {
+      toast.success(entryLockType === 'none' ? 'Lock removed' : 'Entry locked')
+      setShowLockPanel(false)
+      setLockSecret('')
+    }
+  }
+
   async function handleBack() {
     if (saveStatus === 'pending') {
       await saveNow()
@@ -197,7 +227,16 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
               <MoreHorizontal className="w-4 h-4 text-[var(--text-secondary)]" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
+                <button
+                  onClick={() => { setMenuOpen(false); setShowLockPanel((v) => !v) }}
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+                >
+                  {entryLockType !== 'none'
+                    ? <Lock size={14} className="text-[#1976D2] shrink-0" />
+                    : <LockOpen size={14} className="text-[#9E9E9E] shrink-0" />}
+                  {entryLockType !== 'none' ? 'Change lock…' : 'Lock entry…'}
+                </button>
                 <button
                   onClick={() => {
                     setMenuOpen(false)
@@ -207,6 +246,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
                 >
                   Export entry
                 </button>
+                <div className="my-1 border-t border-[var(--border)]" />
                 <button
                   onClick={() => {
                     setMenuOpen(false)
@@ -244,6 +284,37 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-3 py-2">
           <TagInput entryId={entry.entry_id} initialTags={initialTags} />
         </div>
+
+        {/* Lock panel — shown when user opens "Lock entry…" from the menu */}
+        {showLockPanel && (
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-4 py-4">
+            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1.5" style={{ letterSpacing: '0.5px' }}>
+              <Lock size={11} />
+              Entry Security
+            </p>
+            <LockPicker
+              lockType={entryLockType}
+              onChange={(type, secret) => { setEntryLockType(type); setLockSecret(secret) }}
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => { setShowLockPanel(false); setLockSecret('') }}
+                className="flex-1 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveLock}
+                disabled={isSavingLock}
+                className="flex-[2] py-2 rounded-lg bg-[#1976D2] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {isSavingLock ? 'Saving…' : entryLockType === 'none' ? 'Remove lock' : 'Apply lock'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sticky toolbar — pins to the top of the scroll container so the
