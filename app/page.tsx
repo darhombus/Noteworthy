@@ -24,7 +24,7 @@ export default function LandingPage() {
 
           {/* Tagline */}
           <p className="text-[var(--text-secondary)] text-[15px] leading-relaxed mb-10">
-            Your private space to think, reflect, and grow.
+            Your private space to think, reflect and grow.
           </p>
 
           {/* CTAs */}
