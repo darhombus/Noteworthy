@@ -679,17 +679,24 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             )
           ) : (
             <div className="flex flex-col gap-3">
-              {tagFilteredEntries.map((entry, index) => (
-                <EntryCard
-                  key={entry.entry_id}
-                  entry={entry}
-                  journalId={journal.journal_id}
-                  accentColor={accent}
-                  isLatest={index === 0}
-                  onDelete={setDeleteTarget}
-                  tags={entry.tags}
-                />
-              ))}
+              {(() => {
+                const latestEntry = tagFilteredEntries.reduce<typeof tagFilteredEntries[0] | null>((a, b) => {
+                  if (!a) return b
+                  if (a.entry_date !== b.entry_date) return a.entry_date > b.entry_date ? a : b
+                  return new Date(a.created_at).getTime() >= new Date(b.created_at).getTime() ? a : b
+                }, null)
+                return tagFilteredEntries.map((entry) => (
+                  <EntryCard
+                    key={entry.entry_id}
+                    entry={entry}
+                    journalId={journal.journal_id}
+                    accentColor={accent}
+                    isLatest={entry.entry_id === latestEntry?.entry_id}
+                    onDelete={setDeleteTarget}
+                    tags={entry.tags}
+                  />
+                ))
+              })()}
             </div>
           )}
         </>

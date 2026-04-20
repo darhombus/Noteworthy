@@ -39,9 +39,6 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
   useEffect(() => { setMounted(true) }, [])
 
-  // Keep local fav state in sync when server sends fresh prop after revalidation
-  useEffect(() => { setIsFav(journal.is_favorite) }, [journal.is_favorite])
-
   const isDark = mounted && resolvedTheme === 'dark'
   const accent = journal.color ?? '#1976D2'
   const emojiBg = isDark ? hexAlpha(accent, '25') : hexAlpha(accent, '15')
