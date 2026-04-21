@@ -43,6 +43,10 @@ export default function RecycleBinClient({ initialItems }: Props) {
     // Optimistic: remove from list and show toast immediately.
     setItems((prev) => prev.filter((i) => i.id !== item.id))
     toast.success(`"${item.title}" restored`)
+    // Drop any in-session "unlocked" grant so a restored locked item forces
+    // re-authentication via LockScreen on next open. Otherwise a user who
+    // unlocked the item before deleting it would re-enter without a prompt.
+    sessionStorage.removeItem(`nw:unlocked:${item.item_type}:${item.id}`)
     try {
       const res = await fetch(`/api/recycle-bin/${item.id}`, {
         method: 'PATCH',

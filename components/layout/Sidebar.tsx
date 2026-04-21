@@ -109,7 +109,7 @@ export default function Sidebar({ user }: SidebarProps) {
       </div>
 
       {/* Nav links */}
-      <ul className="flex-1 px-3 space-y-0.5">
+      <ul className="flex-1 px-3 pt-2 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/')
           return (
@@ -192,7 +192,7 @@ export default function Sidebar({ user }: SidebarProps) {
           </div>
 
           {/* Nav links */}
-          <ul className="flex-1 px-1.5 lg:px-3 space-y-0.5">
+          <ul className="flex-1 px-1.5 lg:px-3 pt-2 space-y-0.5">
             {NAV_ITEMS.map(({ href, label, Icon }) => {
               const isActive = pathname === href || pathname.startsWith(href + '/')
               return (

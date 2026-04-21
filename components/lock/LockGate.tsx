@@ -12,10 +12,10 @@ interface LockGateProps {
 }
 
 /**
- * Wraps content that may be locked.  If lockType is 'none' or the user has
- * already unlocked during this session (tracked in sessionStorage), renders
- * children immediately.  Otherwise shows LockScreen and only reveals children
- * after a successful verification.
+ * Wraps content that may be locked. If lockType is 'none', children render
+ * immediately. Otherwise LockScreen is shown and children only appear after a
+ * successful verification for this specific mount — navigating away and back
+ * re-prompts, since the unlocked flag lives only in component state.
  */
 export default function LockGate({
   lockType,
@@ -24,13 +24,7 @@ export default function LockGate({
   entityName,
   children,
 }: LockGateProps) {
-  const storageKey = `nw:unlocked:${entityType}:${entityId}`
-
-  const [unlocked, setUnlocked] = useState(() => {
-    if (lockType === 'none') return true
-    if (typeof window === 'undefined') return false
-    return sessionStorage.getItem(storageKey) === '1'
-  })
+  const [unlocked, setUnlocked] = useState(lockType === 'none')
 
   if (unlocked) return <>{children}</>
 
@@ -40,10 +34,7 @@ export default function LockGate({
       entityId={entityId}
       entityType={entityType}
       entityName={entityName}
-      onUnlock={() => {
-        sessionStorage.setItem(storageKey, '1')
-        setUnlocked(true)
-      }}
+      onUnlock={() => setUnlocked(true)}
     />
   )
 }

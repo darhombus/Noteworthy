@@ -28,6 +28,9 @@ interface WritingActivityProps {
 // ---------------------------------------------------------------------------
 // Aggregation helpers
 // ---------------------------------------------------------------------------
+const pad = (n: number) => String(n).padStart(2, '0')
+const localDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
 function buildSeries(entries: EntryPoint[], range: Range): { labels: string[]; data: number[] } {
   const now = new Date()
 
@@ -36,7 +39,7 @@ function buildSeries(entries: EntryPoint[], range: Range): { labels: string[]; d
       const d = new Date(now)
       d.setDate(now.getDate() - (6 - i))
       return {
-        key: d.toISOString().split('T')[0],
+        key: localDateStr(d),
         label: d.toLocaleDateString('en-US', { weekday: 'short' }),
       }
     })
@@ -52,7 +55,7 @@ function buildSeries(entries: EntryPoint[], range: Range): { labels: string[]; d
       const d = new Date(now)
       d.setDate(now.getDate() - (29 - i))
       return {
-        key: d.toISOString().split('T')[0],
+        key: localDateStr(d),
         // Full date label for every slot — Chart.js autoSkip will thin them out
         label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       }

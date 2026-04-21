@@ -28,7 +28,7 @@ export default async function EntryPage({ params }: EntryPageProps) {
       .single(),
     supabase
       .from('journals')
-      .select('journal_id, title, color')
+      .select('journal_id, title, color, entry_lock_type')
       .eq('journal_id', journalId)
       .eq('user_id', user.id)
       .is('deleted_at', null)

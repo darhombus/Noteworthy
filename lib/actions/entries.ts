@@ -141,9 +141,25 @@ export async function softDeleteEntry(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Read lock fields before the soft-delete so we can write them back explicitly.
+  // Without this, lock_type (DEFAULT 'none') can be silently reset during the
+  // update on some Supabase client versions, causing restored entries to lose
+  // their lock.
+  const { data: current, error: readError } = await supabase
+    .from('entries')
+    .select('lock_type, lock_hash')
+    .eq('entry_id', id)
+    .single()
+
+  if (readError) return { error: readError.message }
+
   const { error } = await supabase
     .from('entries')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({
+      deleted_at: new Date().toISOString(),
+      lock_type: current.lock_type,
+      lock_hash: current.lock_hash,
+    })
     .eq('entry_id', id)
 
   if (error) return { error: error.message }
