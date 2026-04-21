@@ -66,13 +66,14 @@ function getCurrentWeekDays(): DaySlot[] {
   const weekStart = new Date(today)
   weekStart.setDate(today.getDate() - today.getDay()) // back to Sunday
   const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const pad = (n: number) => String(n).padStart(2, '0')
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart)
     d.setDate(weekStart.getDate() + i)
     return {
       label: DAY_LABELS[i],
       date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      dateStr: d.toISOString().split('T')[0],
+      dateStr: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
     }
   })
 }

@@ -66,7 +66,8 @@ export default function CalendarHeatmap({
   const firstDay = new Date(year, month, 1)
   const totalDays = new Date(year, month + 1, 0).getDate()
   const startDow = firstDay.getDay()
-  const todayStr = now.toISOString().split('T')[0]
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
   const monthLabel = firstDay.toLocaleDateString('en-US', {
     month: 'long',

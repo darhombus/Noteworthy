@@ -194,7 +194,10 @@ export default function EntryCard({
             WebkitBoxOrient: 'vertical',
           }}
         >
-          {previewSnippet && <span>{previewSnippet}</span>}
+          {entry.lock_type !== 'none'
+            ? <span className="italic text-[var(--text-muted)]">Content hidden — entry is locked</span>
+            : previewSnippet && <span>{previewSnippet}</span>
+          }
         </div>
 
         {/* Row 4: tags */}

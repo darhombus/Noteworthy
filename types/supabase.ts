@@ -105,6 +105,8 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           entry_count: number
+          entry_lock_hash: string | null
+          entry_lock_type: string
           icon: string
           is_favorite: boolean
           journal_id: string
@@ -121,6 +123,8 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           entry_count?: number
+          entry_lock_hash?: string | null
+          entry_lock_type?: string
           icon?: string
           is_favorite?: boolean
           journal_id?: string
@@ -137,6 +141,8 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           entry_count?: number
+          entry_lock_hash?: string | null
+          entry_lock_type?: string
           icon?: string
           is_favorite?: boolean
           journal_id?: string

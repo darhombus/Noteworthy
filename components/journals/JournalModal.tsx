@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { X, BookOpen, ChevronDown, Palette, ShieldCheck } from 'lucide-react'
+import { X, BookOpen, ChevronDown, Palette, ShieldCheck, Lock, LockOpen, Hash, KeyRound } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createJournal, updateJournal } from '@/lib/actions/journals'
+import { setLock } from '@/lib/actions/lock'
 import {
   createJournalSchema,
   COLOR_DEFS,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/validations/journals'
 import BookIcon from '@/components/ui/BookIcon'
 import LockPicker from '@/components/lock/LockPicker'
+import SecretInput from '@/components/lock/SecretInput'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
@@ -30,6 +32,12 @@ interface JournalModalProps {
   onSuccess: () => void
 }
 
+function lockSummary(type: LockType): { label: string; icon: React.ReactNode } {
+  if (type === 'pin') return { label: 'Locked with a 4-digit PIN', icon: <Hash size={12} /> }
+  if (type === 'password') return { label: 'Locked with a password', icon: <KeyRound size={12} /> }
+  return { label: 'No lock set', icon: <LockOpen size={12} /> }
+}
+
 export default function JournalModal({ journal, onClose, onSuccess }: JournalModalProps) {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
@@ -37,10 +45,24 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   const isEdit = !!journal
 
   const [colorOpen, setColorOpen] = useState(false)
-  const [lockType, setLockType] = useState<LockType>(
-    (journal?.lock_type as LockType | undefined) ?? 'none',
+
+  // Lock state is fully separate from the journal form — it's applied via a
+  // dedicated `setLock` call, never mixed into `updateJournal`. That removes
+  // any chance of a journal save accidentally clearing the lock.
+  const currentLockType: LockType = (journal?.lock_type as LockType | undefined) ?? 'none'
+  const [pickerOpen, setPickerOpen] = useState<boolean>(!isEdit && false)
+  const [draftLockType, setDraftLockType] = useState<LockType>(
+    isEdit ? currentLockType : 'none',
   )
-  const [lockSecret, setLockSecret] = useState('')
+  const [draftSecret, setDraftSecret] = useState('')
+  const [isSavingLock, setIsSavingLock] = useState(false)
+
+  // Changing/removing an existing journal lock requires the caller to type
+  // the current PIN/password first. `currentSecret` is collected inline
+  // above the picker when `currentLockType !== 'none'` on edit.
+  const [currentSecret, setCurrentSecret] = useState('')
+  const [showCurrentSecret, setShowCurrentSecret] = useState(false)
+  const [currentSecretError, setCurrentSecretError] = useState<string | null>(null)
 
   const {
     register,
@@ -59,7 +81,6 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       icon: (JOURNAL_ICONS.includes(journal?.icon as EmojiIcon)
         ? journal!.icon
         : JOURNAL_ICONS[0]) as EmojiIcon,
-      lock_type: (journal?.lock_type as LockType | undefined) ?? 'none',
     },
   })
 
@@ -71,41 +92,114 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   const colorLabel = getColorLabel(selectedColor)
   const emojiBg = isDark ? `${selectedColor}25` : colorBg
 
-  function handleLockChange(type: LockType, secret: string) {
-    setLockType(type)
-    setLockSecret(secret)
-    setValue('lock_type', type)
+  function validateDraftLock(): string | null {
+    if (draftLockType === 'pin' && !/^\d{4}$/.test(draftSecret)) {
+      return 'Please enter all 4 PIN digits'
+    }
+    if (draftLockType === 'password' && draftSecret.length === 0) {
+      return 'Please enter a password'
+    }
+    return null
+  }
+
+  async function applyDraftLock(
+    journalId: string,
+    hasExistingLock: boolean,
+  ): Promise<boolean> {
+    const err = validateDraftLock()
+    if (err) {
+      toast.error(err)
+      return false
+    }
+    if (hasExistingLock) {
+      const len = currentLockType === 'pin' ? 4 : 1
+      if (currentSecret.length < len) {
+        setCurrentSecretError(
+          currentLockType === 'pin' ? 'Enter all 4 PIN digits' : 'Enter your password',
+        )
+        return false
+      }
+    }
+    const result = await setLock(
+      journalId,
+      'journal',
+      draftLockType,
+      draftLockType === 'none' ? undefined : draftSecret,
+      hasExistingLock ? currentSecret : undefined,
+    )
+    if ('error' in result) {
+      if (hasExistingLock) {
+        setCurrentSecretError(result.error || 'Failed to update lock')
+        setCurrentSecret('')
+      } else {
+        toast.error(result.error || 'Failed to update lock')
+      }
+      return false
+    }
+    return true
+  }
+
+  async function handleApplyLockOnEdit() {
+    if (!journal) return
+    setIsSavingLock(true)
+    setCurrentSecretError(null)
+    const hasExistingLock = currentLockType !== 'none'
+    const ok = await applyDraftLock(journal.journal_id, hasExistingLock)
+    setIsSavingLock(false)
+    if (!ok) return
+    toast.success(draftLockType === 'none' ? 'Lock removed' : 'Lock updated')
+    setPickerOpen(false)
+    setDraftSecret('')
+    setCurrentSecret('')
+    router.refresh()
   }
 
   async function onSubmit(data: CreateJournalInput) {
-    // Validate that secret is set when lock type requires it
-    if (data.lock_type !== 'none') {
-      const pinFull = lockType === 'pin' && lockSecret.length === 4
-      const passFull = lockType === 'password' && lockSecret.length >= 1
-      if (!pinFull && !passFull) {
-        toast.error(
-          lockType === 'pin'
-            ? 'Please enter all 4 PIN digits'
-            : 'Please enter a password',
-        )
+    if (isEdit) {
+      const result = await updateJournal(journal.journal_id, data)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Journal updated')
+      router.refresh()
+      onSuccess()
+      return
+    }
+
+    // Create flow — if user configured a lock in the picker, validate it up
+    // front before we create the row so we don't end up with an orphan
+    // unlocked journal on a validation failure.
+    if (draftLockType !== 'none') {
+      const err = validateDraftLock()
+      if (err) {
+        toast.error(err)
         return
       }
     }
 
-    const secret = data.lock_type !== 'none' ? lockSecret : undefined
-    const result = isEdit
-      ? await updateJournal(journal.journal_id, data, secret)
-      : await createJournal(data, secret)
-
-    if ('error' in result) {
-      toast.error(result.error)
+    const created = await createJournal(data)
+    if ('error' in created) {
+      toast.error(created.error)
       return
     }
 
-    toast.success(isEdit ? 'Journal updated' : 'Journal created')
+    if (draftLockType !== 'none') {
+      // Freshly-created journal has no existing lock — no currentSecret needed.
+      const lockOk = await applyDraftLock(created.journal.journal_id, false)
+      if (!lockOk) {
+        // The journal was created without a lock. Surface the error and still
+        // close so the user can inspect it in the list.
+        toast.error('Journal created, but the lock could not be applied. Set it from Edit.')
+      }
+    }
+
+    toast.success('Journal created')
     router.refresh()
     onSuccess()
   }
+
+  const summary = lockSummary(currentLockType)
 
   return (
     <div
@@ -284,7 +378,9 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               )}
             </div>
 
-            {/* Security / Lock section */}
+            {/* Security / Lock section — fully independent of the form submit.
+                On edit, applying a lock hits setLock directly; on create, the
+                picker's draft is applied after the journal row exists. */}
             <div>
               <p
                 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1"
@@ -293,13 +389,107 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                 <ShieldCheck size={11} />
                 Security
               </p>
-              <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)]">
-                <LockPicker lockType={lockType} onChange={handleLockChange} />
-              </div>
-              {isEdit && journal?.lock_type !== 'none' && lockType !== 'none' && !lockSecret && (
-                <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">
-                  Leave the {journal.lock_type === 'pin' ? 'PIN' : 'password'} field empty to keep the existing lock unchanged.
-                </p>
+
+              {isEdit && !pickerOpen && (
+                <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: currentLockType === 'none'
+                        ? (isDark ? '#2C2C2C' : '#E0E0E0')
+                        : 'rgba(25,118,210,0.12)',
+                      color: currentLockType === 'none' ? '#9E9E9E' : '#1976D2',
+                    }}
+                  >
+                    {currentLockType === 'none' ? <LockOpen size={14} /> : <Lock size={14} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                      {summary.icon}
+                      {summary.label}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-muted)] truncate">
+                      {currentLockType === 'none'
+                        ? 'Add a PIN or password to hide this journal.'
+                        : 'You can change or remove this lock below.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftLockType(currentLockType)
+                      setDraftSecret('')
+                      setPickerOpen(true)
+                    }}
+                    className="text-xs font-semibold text-[#1976D2] px-2.5 py-1.5 rounded-lg hover:bg-[#1976D2]/10 transition-colors shrink-0"
+                  >
+                    {currentLockType === 'none' ? 'Add lock' : 'Change'}
+                  </button>
+                </div>
+              )}
+
+              {(!isEdit || pickerOpen) && (
+                <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] space-y-3">
+                  {isEdit && currentLockType !== 'none' && (
+                    <div className="space-y-2 pb-3 border-b border-[var(--border)]">
+                      <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase" style={{ letterSpacing: '0.5px' }}>
+                        Current {currentLockType === 'pin' ? 'PIN' : 'password'}
+                      </p>
+                      <SecretInput
+                        lockType={currentLockType === 'pin' ? 'pin' : 'password'}
+                        value={currentSecret}
+                        onChange={(v) => { setCurrentSecret(v); setCurrentSecretError(null) }}
+                        error={!!currentSecretError}
+                        showPassword={showCurrentSecret}
+                        onToggleShow={() => setShowCurrentSecret((v) => !v)}
+                      />
+                      {currentSecretError && (
+                        <p className="text-xs text-red-500 dark:text-red-400">{currentSecretError}</p>
+                      )}
+                    </div>
+                  )}
+                  <LockPicker
+                    lockType={draftLockType}
+                    onChange={(type, secret) => {
+                      setDraftLockType(type)
+                      setDraftSecret(secret)
+                    }}
+                    hint={
+                      isEdit && currentLockType !== 'none'
+                        ? 'This will replace the current lock.'
+                        : undefined
+                    }
+                  />
+                  {isEdit && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickerOpen(false)
+                          setDraftLockType(currentLockType)
+                          setDraftSecret('')
+                          setCurrentSecret('')
+                          setCurrentSecretError(null)
+                        }}
+                        className="flex-1 py-2 rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyLockOnEdit}
+                        disabled={isSavingLock}
+                        className="flex-[2] py-2 rounded-lg bg-[#1976D2] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {isSavingLock
+                          ? 'Saving…'
+                          : draftLockType === 'none'
+                            ? 'Remove lock'
+                            : 'Apply lock'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

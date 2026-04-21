@@ -706,6 +706,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         <DeleteEntryModal
           entryId={deleteTarget.entry_id}
           journalId={journal.journal_id}
+          lockType={(deleteTarget.lock_type as 'none' | 'pin' | 'password') ?? 'none'}
           onClose={() => setDeleteTarget(null)}
         />
       )}

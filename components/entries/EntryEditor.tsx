@@ -17,16 +17,14 @@ import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
 import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
-import LockPicker, { type LockType } from '@/components/lock/LockPicker'
-import { setLock } from '@/lib/actions/lock'
-import { toast } from 'sonner'
+import EntryLockPanel, { type LockType } from '@/components/lock/EntryLockPanel'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
 type Entry = Database['public']['Tables']['entries']['Row']
 type JournalMeta = Pick<
   Database['public']['Tables']['journals']['Row'],
-  'journal_id' | 'title' | 'color'
+  'journal_id' | 'title' | 'color' | 'entry_lock_type'
 >
 
 interface EntryTag {
@@ -63,8 +61,9 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [entryLockType, setEntryLockType] = useState<LockType>(
     (entry.lock_type as LockType | undefined) ?? 'none',
   )
-  const [lockSecret, setLockSecret] = useState('')
-  const [isSavingLock, setIsSavingLock] = useState(false)
+  const [journalEntryLockType, setJournalEntryLockType] = useState<LockType>(
+    (journal.entry_lock_type as LockType | undefined) ?? 'none',
+  )
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -163,27 +162,6 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     dom.addEventListener('click', onClick)
     return () => dom.removeEventListener('click', onClick)
   }, [editor])
-
-  async function handleSaveLock() {
-    if (entryLockType !== 'none') {
-      const pinFull = entryLockType === 'pin' && lockSecret.length === 4
-      const passFull = entryLockType === 'password' && lockSecret.length >= 1
-      if (!pinFull && !passFull) {
-        toast.error(entryLockType === 'pin' ? 'Please enter all 4 PIN digits' : 'Please enter a password')
-        return
-      }
-    }
-    setIsSavingLock(true)
-    const result = await setLock(entry.entry_id, 'entry', entryLockType, lockSecret || undefined)
-    setIsSavingLock(false)
-    if ('error' in result) {
-      toast.error('Failed to update lock')
-    } else {
-      toast.success(entryLockType === 'none' ? 'Lock removed' : 'Entry locked')
-      setShowLockPanel(false)
-      setLockSecret('')
-    }
-  }
 
   async function handleBack() {
     if (saveStatus === 'pending') {
@@ -285,35 +263,23 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           <TagInput entryId={entry.entry_id} initialTags={initialTags} />
         </div>
 
-        {/* Lock panel — shown when user opens "Lock entry…" from the menu */}
+        {/* Lock panel — opened from the overflow menu. Renders the right
+            sub-flow depending on whether this journal has a shared entry
+            lock yet and whether this entry currently participates in it. */}
         {showLockPanel && (
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-4 py-4">
-            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase mb-3 flex items-center gap-1.5" style={{ letterSpacing: '0.5px' }}>
-              <Lock size={11} />
-              Entry Security
-            </p>
-            <LockPicker
-              lockType={entryLockType}
-              onChange={(type, secret) => { setEntryLockType(type); setLockSecret(secret) }}
-            />
-            <div className="flex gap-2 mt-3">
-              <button
-                type="button"
-                onClick={() => { setShowLockPanel(false); setLockSecret('') }}
-                className="flex-1 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveLock}
-                disabled={isSavingLock}
-                className="flex-[2] py-2 rounded-lg bg-[#1976D2] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {isSavingLock ? 'Saving…' : entryLockType === 'none' ? 'Remove lock' : 'Apply lock'}
-              </button>
-            </div>
-          </div>
+          <EntryLockPanel
+            entryId={entry.entry_id}
+            journalId={journal.journal_id}
+            entryLockType={entryLockType}
+            journalEntryLockType={journalEntryLockType}
+            onClose={() => setShowLockPanel(false)}
+            onApplied={(nextEntry, nextJournal) => {
+              setEntryLockType(nextEntry)
+              setJournalEntryLockType(nextJournal)
+              setShowLockPanel(false)
+              router.refresh()
+            }}
+          />
         )}
       </div>
 
@@ -400,6 +366,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         <DeleteEntryModal
           entryId={entry.entry_id}
           journalId={journal.journal_id}
+          lockType={entryLockType}
           onClose={() => setShowDeleteModal(false)}
         />
       )}

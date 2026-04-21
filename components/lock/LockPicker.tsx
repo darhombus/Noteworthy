@@ -1,19 +1,27 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useState } from 'react'
 import { ShieldOff, Hash, KeyRound, Eye, EyeOff } from 'lucide-react'
-import { useState } from 'react'
 
 export type LockType = 'none' | 'pin' | 'password'
 
 interface LockPickerProps {
-  /** Current lock type selection */
+  /** Current lock type selection (controlled by the parent). */
   lockType: LockType
-  /** Called whenever type or secret changes */
+  /**
+   * Fired only in response to user input. It will not fire on mount, so a
+   * consumer that doesn't touch the picker can safely treat this as "no
+   * change to apply".
+   */
   onChange: (lockType: LockType, secret: string) => void
+  /**
+   * Optional — text below the password input when set. Useful for hints like
+   * "Minimum 4 characters" in the edit flow.
+   */
+  hint?: string
 }
 
-export default function LockPicker({ lockType, onChange }: LockPickerProps) {
+export default function LockPicker({ lockType, onChange, hint }: LockPickerProps) {
   const [secret, setSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
   const [pinDigits, setPinDigits] = useState<[string, string, string, string]>(['', '', '', ''])
@@ -24,22 +32,18 @@ export default function LockPicker({ lockType, onChange }: LockPickerProps) {
     useRef<HTMLInputElement>(null),
   ]
 
-  // Notify parent whenever selection or secret changes
-  useEffect(() => {
-    if (lockType === 'pin') {
-      onChange('pin', pinDigits.join(''))
-    } else if (lockType === 'password') {
-      onChange('password', secret)
-    } else {
-      onChange('none', '')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lockType, pinDigits, secret])
+  function emit(type: LockType, nextPin: string[], nextSecret: string) {
+    if (type === 'pin') onChange('pin', nextPin.join(''))
+    else if (type === 'password') onChange('password', nextSecret)
+    else onChange('none', '')
+  }
 
   function handleTypeChange(type: LockType) {
-    // Reset inputs when switching
+    // Switching types always resets both inputs so the previous value of one
+    // can't be silently submitted for the other.
     setPinDigits(['', '', '', ''])
     setSecret('')
+    setShowSecret(false)
     onChange(type, '')
   }
 
@@ -48,15 +52,19 @@ export default function LockPicker({ lockType, onChange }: LockPickerProps) {
     const next = [...pinDigits] as [string, string, string, string]
     next[index] = digit
     setPinDigits(next)
-    if (digit && index < 3) {
-      pinRefs[index + 1].current?.focus()
-    }
+    emit('pin', next, secret)
+    if (digit && index < 3) pinRefs[index + 1].current?.focus()
   }
 
   function handlePinKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
       pinRefs[index - 1].current?.focus()
     }
+  }
+
+  function handlePasswordChange(value: string) {
+    setSecret(value)
+    emit('password', pinDigits, value)
   }
 
   const options: { type: LockType; label: string; icon: React.ReactNode }[] = [
@@ -114,7 +122,7 @@ export default function LockPicker({ lockType, onChange }: LockPickerProps) {
           <input
             type={showSecret ? 'text' : 'password'}
             value={secret}
-            onChange={(e) => setSecret(e.target.value)}
+            onChange={(e) => handlePasswordChange(e.target.value)}
             placeholder="Enter a password…"
             autoComplete="new-password"
             className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--border)] bg-[var(--bg-muted)] text-sm text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none focus:ring-2 focus:ring-[#1976D2] focus:border-transparent"
@@ -132,9 +140,10 @@ export default function LockPicker({ lockType, onChange }: LockPickerProps) {
 
       {lockType !== 'none' && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          {lockType === 'pin'
-            ? 'You will need this PIN to open the content.'
-            : 'You will need this password to open the content.'}
+          {hint ??
+            (lockType === 'pin'
+              ? 'You will need this PIN to open the content.'
+              : 'You will need this password to open the content.')}
           {' '}There is no recovery — store it somewhere safe.
         </p>
       )}

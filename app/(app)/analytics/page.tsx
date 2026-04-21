@@ -6,6 +6,12 @@ import CalendarHeatmap from '@/components/analytics/CalendarHeatmap'
 import EntriesByJournal from '@/components/analytics/EntriesByJournal'
 import TimePatterns from '@/components/analytics/TimePatterns'
 import TopTags from '@/components/analytics/TopTags'
+import AnalyticsRealtimeRefresh from '@/components/analytics/AnalyticsRealtimeRefresh'
+
+export const dynamic = 'force-dynamic'
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const localDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
 // ---------------------------------------------------------------------------
 // Streak (same inline logic as dashboard)
@@ -13,10 +19,10 @@ import TopTags from '@/components/analytics/TopTags'
 function computeCurrentStreak(sortedDesc: string[]): number {
   if (!sortedDesc.length) return 0
   const unique = [...new Set(sortedDesc)].sort((a, b) => (a < b ? 1 : -1))
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localDateStr(new Date())
   const yest = new Date()
   yest.setDate(yest.getDate() - 1)
-  const yesterdayStr = yest.toISOString().split('T')[0]
+  const yesterdayStr = localDateStr(yest)
   if (unique[0] !== todayStr && unique[0] !== yesterdayStr) return 0
   let streak = 1
   for (let i = 1; i < unique.length; i++) {
@@ -40,7 +46,7 @@ export default async function AnalyticsPage() {
 
   const oneYearAgo = new Date()
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
-  const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0]
+  const oneYearAgoStr = localDateStr(oneYearAgo)
 
   const [totalResult, entryDataResult, wordResult, journalsResult, tagsResult] =
     await Promise.all([
@@ -96,8 +102,8 @@ export default async function AnalyticsPage() {
   const today = new Date()
   const weekStart = new Date(today)
   weekStart.setDate(today.getDate() - today.getDay())
-  const weekStartStr = weekStart.toISOString().split('T')[0]
-  const todayStr = today.toISOString().split('T')[0]
+  const weekStartStr = localDateStr(weekStart)
+  const todayStr = localDateStr(today)
 
   const weekDayCounts = new Map<string, number>()
   for (const e of entryDataResult.data ?? []) {
@@ -120,8 +126,8 @@ export default async function AnalyticsPage() {
   // ---- Current-month boundaries (used for heatmap + time patterns) ----
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
   const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  const firstOfMonthStr = firstOfMonth.toISOString().split('T')[0]
-  const lastOfMonthStr = lastOfMonth.toISOString().split('T')[0]
+  const firstOfMonthStr = localDateStr(firstOfMonth)
+  const lastOfMonthStr = localDateStr(lastOfMonth)
   const monthLabel = firstOfMonth.toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
@@ -152,6 +158,8 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="space-y-6 py-6">
+      <AnalyticsRealtimeRefresh />
+
       {/* Summary */}
       <AnalyticsSummary
         totalEntries={totalEntries}
