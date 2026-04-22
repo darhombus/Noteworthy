@@ -21,6 +21,7 @@ import BookIcon from '@/components/ui/BookIcon'
 import { useDebounce } from '@/hooks/useDebounce'
 import EntryCard from './EntryCard'
 import DeleteEntryModal from './DeleteEntryModal'
+import EntryLockModal from './EntryLockModal'
 import Spinner from '@/components/ui/Spinner'
 import type { Database } from '@/types/supabase'
 
@@ -156,6 +157,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null)
+  const [lockTarget, setLockTarget] = useState<Entry | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
   // Search state
@@ -693,6 +695,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                     accentColor={accent}
                     isLatest={entry.entry_id === latestEntry?.entry_id}
                     onDelete={setDeleteTarget}
+                    onLock={setLockTarget}
                     tags={entry.tags}
                   />
                 ))
@@ -708,6 +711,18 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           journalId={journal.journal_id}
           lockType={(deleteTarget.lock_type as 'none' | 'pin' | 'password') ?? 'none'}
           onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {lockTarget && (
+        <EntryLockModal
+          entryId={lockTarget.entry_id}
+          journalId={journal.journal_id}
+          entryLockType={(lockTarget.lock_type as 'none' | 'pin' | 'password') ?? 'none'}
+          journalEntryLockType={
+            (journal.entry_lock_type as 'none' | 'pin' | 'password') ?? 'none'
+          }
+          onClose={() => setLockTarget(null)}
         />
       )}
     </div>

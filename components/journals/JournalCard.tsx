@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2 } from 'lucide-react'
@@ -76,10 +76,28 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     e.stopPropagation()
     if (!menuOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
+      // Initial guess: just below the button. useLayoutEffect measures the
+      // real height afterward and flips above if we'd fall off the viewport.
       setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
     }
     setMenuOpen((prev) => !prev)
   }
+
+  // Flip the dropdown above the button if it would be clipped below the
+  // viewport — mirrors native <select> behaviour so journals at the bottom
+  // of the grid don't lose their menu offscreen.
+  useLayoutEffect(() => {
+    if (!menuOpen || !menuPos || !dropdownRef.current || !buttonRef.current) return
+    const menuRect = dropdownRef.current.getBoundingClientRect()
+    const btnRect = buttonRef.current.getBoundingClientRect()
+    const viewportH = window.innerHeight
+    const wouldClip = menuRect.bottom > viewportH - 8
+    if (!wouldClip) return
+    const flippedTop = Math.max(8, btnRect.top - menuRect.height - 4)
+    if (Math.abs(flippedTop - menuPos.top) > 1) {
+      setMenuPos({ top: flippedTop, right: menuPos.right })
+    }
+  }, [menuOpen, menuPos])
 
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     month: 'short',
