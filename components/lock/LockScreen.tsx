@@ -76,8 +76,14 @@ export default function LockScreen({
     if ('error' in result) {
       setError(result.error)
       triggerShake()
-      if (lockType === 'pin') setPinDigits(['', '', '', ''])
-      setTimeout(() => pinRefs[0].current?.focus(), 50)
+      // Wipe whichever field the user actually used, so the next attempt
+      // starts on an empty input.
+      if (lockType === 'pin') {
+        setPinDigits(['', '', '', ''])
+        setTimeout(() => pinRefs[0].current?.focus(), 50)
+      } else {
+        setPassword('')
+      }
     } else {
       onUnlock()
     }

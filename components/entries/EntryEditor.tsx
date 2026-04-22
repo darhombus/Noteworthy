@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MoreHorizontal, Lock, LockOpen } from 'lucide-react'
+import { ArrowLeft, MoreHorizontal } from 'lucide-react'
 import { EditorContent } from '@tiptap/react'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
@@ -17,14 +17,14 @@ import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
 import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
-import EntryLockPanel, { type LockType } from '@/components/lock/EntryLockPanel'
+import type { LockType } from '@/components/lock/EntryLockPanel'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
 type Entry = Database['public']['Tables']['entries']['Row']
 type JournalMeta = Pick<
   Database['public']['Tables']['journals']['Row'],
-  'journal_id' | 'title' | 'color' | 'entry_lock_type'
+  'journal_id' | 'title' | 'color'
 >
 
 interface EntryTag {
@@ -56,14 +56,11 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [showExportModal, setShowExportModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
-  const [showLockPanel, setShowLockPanel] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  const [entryLockType, setEntryLockType] = useState<LockType>(
-    (entry.lock_type as LockType | undefined) ?? 'none',
-  )
-  const [journalEntryLockType, setJournalEntryLockType] = useState<LockType>(
-    (journal.entry_lock_type as LockType | undefined) ?? 'none',
-  )
+  // Entry lock state — kept here only so DeleteEntryModal gets the right
+  // lockType. Managing the lock itself now happens from the entry card's
+  // overflow menu, not inside the editor.
+  const entryLockType: LockType = (entry.lock_type as LockType | undefined) ?? 'none'
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -207,15 +204,6 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg shadow-lg z-10 py-1">
                 <button
-                  onClick={() => { setMenuOpen(false); setShowLockPanel((v) => !v) }}
-                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-                >
-                  {entryLockType !== 'none'
-                    ? <Lock size={14} className="text-[#1976D2] shrink-0" />
-                    : <LockOpen size={14} className="text-[#9E9E9E] shrink-0" />}
-                  {entryLockType !== 'none' ? 'Change lock…' : 'Lock entry…'}
-                </button>
-                <button
                   onClick={() => {
                     setMenuOpen(false)
                     setShowExportModal(true)
@@ -263,24 +251,6 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           <TagInput entryId={entry.entry_id} initialTags={initialTags} />
         </div>
 
-        {/* Lock panel — opened from the overflow menu. Renders the right
-            sub-flow depending on whether this journal has a shared entry
-            lock yet and whether this entry currently participates in it. */}
-        {showLockPanel && (
-          <EntryLockPanel
-            entryId={entry.entry_id}
-            journalId={journal.journal_id}
-            entryLockType={entryLockType}
-            journalEntryLockType={journalEntryLockType}
-            onClose={() => setShowLockPanel(false)}
-            onApplied={(nextEntry, nextJournal) => {
-              setEntryLockType(nextEntry)
-              setJournalEntryLockType(nextJournal)
-              setShowLockPanel(false)
-              router.refresh()
-            }}
-          />
-        )}
       </div>
 
       {/* Sticky toolbar — pins to the top of the scroll container so the

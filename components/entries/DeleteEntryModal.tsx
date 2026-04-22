@@ -60,7 +60,13 @@ export default function DeleteEntryModal({ entryId, journalId, lockType, onClose
       const verification = await verifyLock(entryId, 'entry', secret)
       if ('error' in verification) {
         setLockError(verification.error)
-        if (lockType === 'pin') setPinDigits(['', '', '', ''])
+        // Clear whichever field was used so the retry starts empty.
+        if (lockType === 'pin') {
+          setPinDigits(['', '', '', ''])
+          setTimeout(() => pinRefs[0].current?.focus(), 0)
+        } else {
+          setPassword('')
+        }
         setIsDeleting(false)
         return
       }

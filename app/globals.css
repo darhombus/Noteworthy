@@ -2,6 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Scrollbar styling — applied via the `custom-scrollbar` class on any
+   element with overflow. Uses the theme's border tokens so the track and
+   thumb blend into both light and dark surfaces. Firefox falls back to
+   `scrollbar-width: thin` + `scrollbar-color`; Webkit uses pseudo elements.
+   ───────────────────────────────────────────────────────────────────────── */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  /* Inset the track further than the modal's 20px corner radius so the
+     scrollbar (and any native arrow buttons the browser insists on
+     drawing) sit well inside the straight part of the modal edge and
+     cannot visually collide with the rounded corners. */
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 999px;
+  /* Transparent border creates inset padding around the thumb so it sits
+     inside the track rather than flush to the modal edge. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+  min-height: 40px;
+  transition: background-color 0.15s ease;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+  background-clip: content-box;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: var(--text-primary);
+  background-clip: content-box;
+}
+/* Hide the default arrow buttons on every variant Chromium exposes.
+   Modern scrollbars (macOS, GitHub, Linear, Notion) omit them, and on
+   Windows 11 the OS can otherwise render native up/down arrows that
+   escape our custom styling. Target single, double, start, end, vertical,
+   horizontal, increment, and decrement to cover every combination. */
+.custom-scrollbar::-webkit-scrollbar-button,
+.custom-scrollbar::-webkit-scrollbar-button:single-button,
+.custom-scrollbar::-webkit-scrollbar-button:double-button,
+.custom-scrollbar::-webkit-scrollbar-button:start,
+.custom-scrollbar::-webkit-scrollbar-button:end,
+.custom-scrollbar::-webkit-scrollbar-button:vertical,
+.custom-scrollbar::-webkit-scrollbar-button:horizontal,
+.custom-scrollbar::-webkit-scrollbar-button:vertical:decrement,
+.custom-scrollbar::-webkit-scrollbar-button:vertical:increment,
+.custom-scrollbar::-webkit-scrollbar-button:horizontal:decrement,
+.custom-scrollbar::-webkit-scrollbar-button:horizontal:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 :root {
   --brand: #1976D2;
   --bg-page: #F0EDE8;

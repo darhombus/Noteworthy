@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Calendar, MoreHorizontal, Pin } from 'lucide-react'
+import { Calendar, MoreHorizontal, Pin, Lock, LockOpen } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { togglePin } from '@/lib/actions/entries'
@@ -34,6 +34,8 @@ interface EntryCardProps {
   accentColor: string
   isLatest: boolean
   onDelete: (entry: Entry) => void
+  /** Opens the entry-lock management dialog for this entry. */
+  onLock: (entry: Entry) => void
   tags?: EntryTag[]
 }
 
@@ -43,6 +45,7 @@ export default function EntryCard({
   accentColor,
   isLatest,
   onDelete,
+  onLock,
   tags = [],
 }: EntryCardProps) {
   const router = useRouter()
@@ -93,10 +96,29 @@ export default function EntryCard({
     e.stopPropagation()
     if (!menuOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
+      // Initial guess: place the menu just below the button. The real height
+      // isn't known until after render, so useLayoutEffect below measures the
+      // actual dropdown and flips it above the button if it would overflow.
       setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
     }
     setMenuOpen((prev) => !prev)
   }
+
+  // After the dropdown mounts, measure it and flip upward if it would be
+  // clipped below the viewport — matches the browser's native select behaviour
+  // and stops the bottom rows of entry cards from losing their menu offscreen.
+  useLayoutEffect(() => {
+    if (!menuOpen || !menuPos || !dropdownRef.current || !buttonRef.current) return
+    const menuRect = dropdownRef.current.getBoundingClientRect()
+    const btnRect = buttonRef.current.getBoundingClientRect()
+    const viewportH = window.innerHeight
+    const wouldClip = menuRect.bottom > viewportH - 8
+    if (!wouldClip) return
+    const flippedTop = Math.max(8, btnRect.top - menuRect.height - 4)
+    if (Math.abs(flippedTop - menuPos.top) > 1) {
+      setMenuPos({ top: flippedTop, right: menuPos.right })
+    }
+  }, [menuOpen, menuPos])
 
   const formattedDate = new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -237,10 +259,13 @@ export default function EntryCard({
             {isPinned ? 'Unpin' : 'Pin'}
           </button>
           <button
-            onClick={() => { setMenuOpen(false); router.push(`/journals/${journalId}/entries/${entry.entry_id}`) }}
-            className="w-full text-left px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            onClick={() => { setMenuOpen(false); onLock(entry) }}
+            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
-            Edit
+            {entry.lock_type !== 'none'
+              ? <Lock size={13} className="text-[#1976D2]" />
+              : <LockOpen size={13} className="text-[#9E9E9E]" />}
+            {entry.lock_type !== 'none' ? 'Change lock' : 'Lock entry'}
           </button>
           <button
             onClick={() => { setMenuOpen(false); onDelete(entry) }}

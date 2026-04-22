@@ -20,7 +20,7 @@ import {
 } from '@/lib/validations/journals'
 import BookIcon from '@/components/ui/BookIcon'
 import LockPicker from '@/components/lock/LockPicker'
-import SecretInput from '@/components/lock/SecretInput'
+import JournalLockPanel from '@/components/lock/JournalLockPanel'
 import type { Database } from '@/types/supabase'
 
 type Journal = Database['public']['Tables']['journals']['Row']
@@ -49,20 +49,19 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   // Lock state is fully separate from the journal form — it's applied via a
   // dedicated `setLock` call, never mixed into `updateJournal`. That removes
   // any chance of a journal save accidentally clearing the lock.
-  const currentLockType: LockType = (journal?.lock_type as LockType | undefined) ?? 'none'
-  const [pickerOpen, setPickerOpen] = useState<boolean>(!isEdit && false)
-  const [draftLockType, setDraftLockType] = useState<LockType>(
-    isEdit ? currentLockType : 'none',
-  )
-  const [draftSecret, setDraftSecret] = useState('')
-  const [isSavingLock, setIsSavingLock] = useState(false)
+  //
+  // Edit flow uses JournalLockPanel (multi-phase: menu / bootstrap /
+  // remove-verify / change-verify / change-new) so add / change-type / change-
+  // secret / remove all have their own guided UI, mirroring EntryLockPanel.
+  // Create flow keeps the single inline LockPicker since there's no existing
+  // secret to verify against.
+  const initialLockType: LockType = (journal?.lock_type as LockType | undefined) ?? 'none'
+  const [currentLockType, setCurrentLockType] = useState<LockType>(initialLockType)
+  const [lockPanelOpen, setLockPanelOpen] = useState(false)
 
-  // Changing/removing an existing journal lock requires the caller to type
-  // the current PIN/password first. `currentSecret` is collected inline
-  // above the picker when `currentLockType !== 'none'` on edit.
-  const [currentSecret, setCurrentSecret] = useState('')
-  const [showCurrentSecret, setShowCurrentSecret] = useState(false)
-  const [currentSecretError, setCurrentSecretError] = useState<string | null>(null)
+  // Create-flow draft (ignored on edit — the panel writes directly).
+  const [draftLockType, setDraftLockType] = useState<LockType>('none')
+  const [draftSecret, setDraftSecret] = useState('')
 
   const {
     register,
@@ -102,58 +101,6 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
     return null
   }
 
-  async function applyDraftLock(
-    journalId: string,
-    hasExistingLock: boolean,
-  ): Promise<boolean> {
-    const err = validateDraftLock()
-    if (err) {
-      toast.error(err)
-      return false
-    }
-    if (hasExistingLock) {
-      const len = currentLockType === 'pin' ? 4 : 1
-      if (currentSecret.length < len) {
-        setCurrentSecretError(
-          currentLockType === 'pin' ? 'Enter all 4 PIN digits' : 'Enter your password',
-        )
-        return false
-      }
-    }
-    const result = await setLock(
-      journalId,
-      'journal',
-      draftLockType,
-      draftLockType === 'none' ? undefined : draftSecret,
-      hasExistingLock ? currentSecret : undefined,
-    )
-    if ('error' in result) {
-      if (hasExistingLock) {
-        setCurrentSecretError(result.error || 'Failed to update lock')
-        setCurrentSecret('')
-      } else {
-        toast.error(result.error || 'Failed to update lock')
-      }
-      return false
-    }
-    return true
-  }
-
-  async function handleApplyLockOnEdit() {
-    if (!journal) return
-    setIsSavingLock(true)
-    setCurrentSecretError(null)
-    const hasExistingLock = currentLockType !== 'none'
-    const ok = await applyDraftLock(journal.journal_id, hasExistingLock)
-    setIsSavingLock(false)
-    if (!ok) return
-    toast.success(draftLockType === 'none' ? 'Lock removed' : 'Lock updated')
-    setPickerOpen(false)
-    setDraftSecret('')
-    setCurrentSecret('')
-    router.refresh()
-  }
-
   async function onSubmit(data: CreateJournalInput) {
     if (isEdit) {
       const result = await updateJournal(journal.journal_id, data)
@@ -186,8 +133,13 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
 
     if (draftLockType !== 'none') {
       // Freshly-created journal has no existing lock — no currentSecret needed.
-      const lockOk = await applyDraftLock(created.journal.journal_id, false)
-      if (!lockOk) {
+      const lockResult = await setLock(
+        created.journal.journal_id,
+        'journal',
+        draftLockType,
+        draftSecret,
+      )
+      if ('error' in lockResult) {
         // The journal was created without a lock. Surface the error and still
         // close so the user can inspect it in the list.
         toast.error('Journal created, but the lock could not be applied. Set it from Edit.')
@@ -209,15 +161,15 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       }}
     >
       <div
-        className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif] max-h-[90vh] overflow-y-auto"
+        className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif] max-h-[90vh] flex flex-col"
         style={{
           boxShadow: isDark
             ? '0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)'
             : '0 24px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04)',
         }}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-6 pt-[22px] pb-[18px] border-b border-[var(--border)]">
+        {/* Header — fixed, does not scroll */}
+        <div className="shrink-0 flex items-center gap-3 px-6 pt-[22px] pb-[18px] border-b border-[var(--border)]">
           <div
             className="flex items-center justify-center w-9 h-9 rounded-[10px] shrink-0"
             style={{
@@ -247,9 +199,13 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
           </button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="px-6 pt-[22px] pb-4 flex flex-col gap-[18px]">
+        {/* Body — form fills remaining space; the inner wrapper is the only
+            scrolling element. The rounded corners live on the outer modal
+            container (overflow-hidden), so the scrollbar renders inside a
+            flat rectangle between the header and footer and cannot be
+            clipped by the modal's curve. */}
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+          <div className="custom-scrollbar overflow-y-auto flex-1 min-h-0 px-6 pt-[22px] pb-4 flex flex-col gap-[18px]">
 
             {/* Color picker */}
             <div>
@@ -378,9 +334,50 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               )}
             </div>
 
+            {/* Edit mode: the form fields (name / description / color) get
+                their own Save Changes footer right here so it's visually tied
+                to the fields above it. The Security block below has its own
+                Apply / Manage buttons, making it obvious the two sections
+                don't affect each other. Create mode keeps a single footer at
+                the bottom of the modal since the initial create + optional
+                lock are applied in one submit. */}
+            {isEdit && (
+              <div className="flex gap-[10px] pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 px-4 py-[10px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] text-[13px] font-medium text-[var(--text-primary)] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !titleValue.trim()}
+                  className="flex-[2] flex items-center justify-center gap-2 px-4 py-[10px] rounded-[10px] text-[13px] font-semibold transition-all disabled:cursor-not-allowed"
+                  style={
+                    titleValue.trim()
+                      ? {
+                          background: 'linear-gradient(135deg, #1976D2, #1565C0)',
+                          color: '#fff',
+                          boxShadow: '0 4px 12px rgba(25,118,210,0.35)',
+                        }
+                      : {
+                          background: isDark ? '#2C2C2C' : '#EEEEEE',
+                          color: '#9E9E9E',
+                        }
+                  }
+                >
+                  <BookOpen size={14} />
+                  {isSubmitting ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            )}
+
             {/* Security / Lock section — fully independent of the form submit.
-                On edit, applying a lock hits setLock directly; on create, the
-                picker's draft is applied after the journal row exists. */}
+                Edit flow delegates to JournalLockPanel (menu / bootstrap /
+                remove-verify / change-verify / change-new). Create flow keeps
+                the single inline LockPicker since there's no existing secret
+                to verify and the row doesn't exist yet. */}
             <div>
               <p
                 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase mb-2 flex items-center gap-1"
@@ -390,7 +387,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                 Security
               </p>
 
-              {isEdit && !pickerOpen && (
+              {isEdit && !lockPanelOpen && (
                 <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] flex items-center gap-3">
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
@@ -411,119 +408,89 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
                     <p className="text-[11px] text-[var(--text-muted)] truncate">
                       {currentLockType === 'none'
                         ? 'Add a PIN or password to hide this journal.'
-                        : 'You can change or remove this lock below.'}
+                        : 'Change the type, update the secret, or remove the lock.'}
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDraftLockType(currentLockType)
-                      setDraftSecret('')
-                      setPickerOpen(true)
-                    }}
+                    onClick={() => setLockPanelOpen(true)}
                     className="text-xs font-semibold text-[#1976D2] px-2.5 py-1.5 rounded-lg hover:bg-[#1976D2]/10 transition-colors shrink-0"
                   >
-                    {currentLockType === 'none' ? 'Add lock' : 'Change'}
+                    {currentLockType === 'none' ? 'Add lock' : 'Manage'}
                   </button>
                 </div>
               )}
 
-              {(!isEdit || pickerOpen) && (
-                <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] space-y-3">
-                  {isEdit && currentLockType !== 'none' && (
-                    <div className="space-y-2 pb-3 border-b border-[var(--border)]">
-                      <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase" style={{ letterSpacing: '0.5px' }}>
-                        Current {currentLockType === 'pin' ? 'PIN' : 'password'}
-                      </p>
-                      <SecretInput
-                        lockType={currentLockType === 'pin' ? 'pin' : 'password'}
-                        value={currentSecret}
-                        onChange={(v) => { setCurrentSecret(v); setCurrentSecretError(null) }}
-                        error={!!currentSecretError}
-                        showPassword={showCurrentSecret}
-                        onToggleShow={() => setShowCurrentSecret((v) => !v)}
-                      />
-                      {currentSecretError && (
-                        <p className="text-xs text-red-500 dark:text-red-400">{currentSecretError}</p>
-                      )}
-                    </div>
-                  )}
+              {isEdit && lockPanelOpen && journal && (
+                <JournalLockPanel
+                  journalId={journal.journal_id}
+                  journalLockType={currentLockType}
+                  onClose={() => setLockPanelOpen(false)}
+                  onApplied={(nextLockType) => {
+                    setCurrentLockType(nextLockType)
+                    setLockPanelOpen(false)
+                    router.refresh()
+                  }}
+                />
+              )}
+
+              {!isEdit && (
+                <div className="p-3 rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)]">
                   <LockPicker
                     lockType={draftLockType}
                     onChange={(type, secret) => {
                       setDraftLockType(type)
                       setDraftSecret(secret)
                     }}
-                    hint={
-                      isEdit && currentLockType !== 'none'
-                        ? 'This will replace the current lock.'
-                        : undefined
-                    }
                   />
-                  {isEdit && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPickerOpen(false)
-                          setDraftLockType(currentLockType)
-                          setDraftSecret('')
-                          setCurrentSecret('')
-                          setCurrentSecretError(null)
-                        }}
-                        className="flex-1 py-2 rounded-lg border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleApplyLockOnEdit}
-                        disabled={isSavingLock}
-                        className="flex-[2] py-2 rounded-lg bg-[#1976D2] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-                      >
-                        {isSavingLock
-                          ? 'Saving…'
-                          : draftLockType === 'none'
-                            ? 'Remove lock'
-                            : 'Apply lock'}
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="flex gap-[10px] px-6 pt-4 pb-[22px] border-t border-[var(--border)]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-[11px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] text-[14px] font-medium text-[var(--text-primary)] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !titleValue.trim()}
-              className="flex-[2] flex items-center justify-center gap-2 px-4 py-[11px] rounded-[10px] text-[14px] font-semibold transition-all disabled:cursor-not-allowed"
-              style={
-                titleValue.trim()
-                  ? {
-                      background: 'linear-gradient(135deg, #1976D2, #1565C0)',
-                      color: '#fff',
-                      boxShadow: '0 4px 12px rgba(25,118,210,0.35)',
-                    }
-                  : {
-                      background: isDark ? '#2C2C2C' : '#EEEEEE',
-                      color: '#9E9E9E',
-                    }
-              }
-            >
-              <BookOpen size={15} />
-              {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Journal'}
-            </button>
-          </div>
+          {/* Edit mode has no fixed footer (its Save Changes sits inline
+              above the Security block), so without this spacer the
+              scrollable body would reach the modal's rounded bottom edge
+              and the scrollbar's last pixels would be clipped by the 20px
+              corner radius. Height ≥ corner radius guarantees the scroll
+              track ends above the curve. */}
+          {isEdit && <div className="shrink-0 h-5" aria-hidden />}
+
+          {/* Footer — create flow only. Fixed at the bottom of the modal
+              (outside the scrolling wrapper) so the scrollbar ends above it
+              and the rounded corners stay clean. Edit flow's Save Changes
+              lives inside the scroll area, under the form fields. */}
+          {!isEdit && (
+            <div className="shrink-0 flex gap-[10px] px-6 pt-4 pb-[22px] border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-[11px] rounded-[10px] bg-[#EEEEEE] dark:bg-[#333333] border border-[var(--border)] text-[14px] font-medium text-[var(--text-primary)] hover:bg-[#E0E0E0] dark:hover:bg-[#404040] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !titleValue.trim()}
+                className="flex-[2] flex items-center justify-center gap-2 px-4 py-[11px] rounded-[10px] text-[14px] font-semibold transition-all disabled:cursor-not-allowed"
+                style={
+                  titleValue.trim()
+                    ? {
+                        background: 'linear-gradient(135deg, #1976D2, #1565C0)',
+                        color: '#fff',
+                        boxShadow: '0 4px 12px rgba(25,118,210,0.35)',
+                      }
+                    : {
+                        background: isDark ? '#2C2C2C' : '#EEEEEE',
+                        color: '#9E9E9E',
+                      }
+                }
+              >
+                <BookOpen size={15} />
+                {isSubmitting ? 'Saving…' : 'Create Journal'}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>
