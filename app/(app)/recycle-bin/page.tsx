@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import RecycleBinClient from '@/components/recycle-bin/RecycleBinClient'
 import type { RecycleBinItem } from '@/components/recycle-bin/RecycleBinClient'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 export default async function RecycleBinPage() {
   const supabase = await createClient()
@@ -51,5 +52,10 @@ export default async function RecycleBinPage() {
     (a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime(),
   )
 
-  return <RecycleBinClient initialItems={initialItems} />
+  return (
+    <>
+      <LiveDataRefresh />
+      <RecycleBinClient initialItems={initialItems} />
+    </>
+  )
 }

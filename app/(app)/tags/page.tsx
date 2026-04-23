@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import TagManagementClient from '@/components/tags/TagManagementClient'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 export interface TagEntryRef {
   entry_id: string
@@ -43,6 +44,7 @@ export default async function TagsPage() {
 
   return (
     <div className="p-6 max-w-[900px] mx-auto">
+      <LiveDataRefresh />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import JournalGrid from '@/components/journals/JournalGrid'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 export default async function JournalsPage() {
   const supabase = await createClient()
@@ -17,5 +18,10 @@ export default async function JournalsPage() {
     .order('is_favorite', { ascending: false })
     .order('updated_at', { ascending: false })
 
-  return <JournalGrid journals={journals ?? []} />
+  return (
+    <>
+      <LiveDataRefresh />
+      <JournalGrid journals={journals ?? []} />
+    </>
+  )
 }

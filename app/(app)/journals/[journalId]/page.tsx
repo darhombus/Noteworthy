@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import EntryList from '@/components/entries/EntryList'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
 import type { UserPreferences } from '@/lib/actions/settings'
@@ -62,6 +63,7 @@ export default async function JournalPage({ params }: JournalPageProps) {
 
   return (
     <>
+      <LiveDataRefresh />
       <BreadcrumbTitle id={journal.journal_id} title={journal.title} />
       <LockGate
         lockType={journal.lock_type as 'none' | 'pin' | 'password'}
