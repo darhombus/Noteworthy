@@ -1,31 +1,69 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Menu, Plus, ChevronRight, Home, Search } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 
-const TITLES: Record<string, string> = {
-  '/dashboard':   'Dashboard',
-  '/journals':    'Journals',
-  '/analytics':   'Analytics',
-  '/tags':        'Tags',
-  '/recycle-bin': 'Recycle Bin',
-  '/settings':    'Settings',
+// Static top-level routes. Anything not matched here is treated as a dynamic
+// segment and resolved against the breadcrumb-title store (see BreadcrumbTitle).
+const SECTION_LABELS: Record<string, string> = {
+  dashboard:    'Dashboard',
+  journals:     'Journals',
+  analytics:    'Analytics',
+  tags:         'Tags',
+  'recycle-bin':'Recycle Bin',
+  settings:     'Settings',
 }
 
-function getTitle(pathname: string): string {
-  for (const [prefix, label] of Object.entries(TITLES)) {
-    if (pathname === prefix || pathname.startsWith(prefix + '/')) return label
+// Path segments that are structural grouping only (no crumb of their own).
+// e.g. /journals/abc/entries/def renders "Journals > [journal] > [entry]" —
+// "entries" is skipped since it's not a visitable page.
+const STRUCTURAL_SEGMENTS = new Set(['entries'])
+
+interface Crumb {
+  label: string
+  href: string | null  // null = current page, not clickable
+}
+
+function buildCrumbs(pathname: string, titles: Record<string, string>): Crumb[] {
+  const parts = pathname.split('/').filter(Boolean)
+  const crumbs: Crumb[] = []
+  let href = ''
+
+  for (let i = 0; i < parts.length; i++) {
+    const segment = parts[i]
+    href += `/${segment}`
+
+    if (STRUCTURAL_SEGMENTS.has(segment)) continue
+
+    const sectionLabel = SECTION_LABELS[segment]
+    const label = sectionLabel ?? titles[segment] ?? fallbackLabel(segment, parts, i)
+    const isLast = i === parts.length - 1
+    crumbs.push({ label, href: isLast ? null : href })
   }
-  return 'Noteworthy'
+
+  return crumbs
+}
+
+function fallbackLabel(segment: string, parts: string[], i: number): string {
+  // `/journals/xxx/entries/new` — show "New Entry" rather than "new"
+  if (segment === 'new' && parts[i - 1] === 'entries') return 'New Entry'
+  // Dynamic id with no registered title yet (brief flash during navigation)
+  if (parts[i - 1] === 'entries') return 'Entry'
+  if (parts[i - 1] === 'journals') return 'Journal'
+  return segment.charAt(0).toUpperCase() + segment.slice(1)
 }
 
 export default function TopBar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { toggleSidebar, setCreateJournalOpen, openSearch } = useUIStore()
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const setCreateJournalOpen = useUIStore((s) => s.setCreateJournalOpen)
+  const openSearch = useUIStore((s) => s.openSearch)
+  const breadcrumbTitles = useUIStore((s) => s.breadcrumbTitles)
 
-  const title = getTitle(pathname)
+  const crumbs = buildCrumbs(pathname, breadcrumbTitles)
 
   function handleNewJournal() {
     setCreateJournalOpen(true)
@@ -45,14 +83,43 @@ export default function TopBar() {
         <Menu size={20} />
       </button>
 
-      {/* Title + breadcrumb */}
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <div className="flex items-center gap-1 text-sm text-[var(--text-secondary)]">
-          <Home size={14} className="flex-shrink-0" />
-          <ChevronRight size={14} className="flex-shrink-0" />
-        </div>
-        <h1 className="text-base font-semibold text-gray-900 dark:text-white truncate">{title}</h1>
-      </div>
+      {/* Breadcrumb trail */}
+      <nav aria-label="Breadcrumb" className="flex items-center min-w-0 flex-1">
+        <ol className="flex items-center gap-1 min-w-0 text-sm">
+          <li className="flex items-center flex-shrink-0">
+            <Link
+              href="/dashboard"
+              aria-label="Home"
+              className="p-1 -m-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none transition-colors"
+            >
+              <Home size={14} />
+            </Link>
+          </li>
+          {crumbs.map((crumb, i) => {
+            const isLast = i === crumbs.length - 1
+            return (
+              <li key={`${crumb.href ?? 'current'}-${i}`} className="flex items-center gap-1 min-w-0">
+                <ChevronRight size={14} className="flex-shrink-0 text-[var(--text-secondary)]" />
+                {crumb.href && !isLast ? (
+                  <Link
+                    href={crumb.href}
+                    className="px-1.5 py-0.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none transition-colors truncate max-w-[180px]"
+                  >
+                    {crumb.label}
+                  </Link>
+                ) : (
+                  <span
+                    aria-current="page"
+                    className="px-1.5 py-0.5 font-semibold text-gray-900 dark:text-white truncate max-w-[280px]"
+                  >
+                    {crumb.label}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
