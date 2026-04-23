@@ -5,16 +5,28 @@ import { AlertTriangle } from 'lucide-react'
 
 interface ConflictDialogProps {
   onKeepMine: () => Promise<void>
-  onDiscard: () => void
+  onDiscard: () => Promise<void>
 }
 
 export default function ConflictDialog({ onKeepMine, onDiscard }: ConflictDialogProps) {
-  const [isSaving, setIsSaving] = useState(false)
+  const [activeAction, setActiveAction] = useState<'keep' | 'discard' | null>(null)
 
   async function handleKeepMine() {
-    setIsSaving(true)
-    await onKeepMine()
-    setIsSaving(false)
+    setActiveAction('keep')
+    try {
+      await onKeepMine()
+    } finally {
+      setActiveAction(null)
+    }
+  }
+
+  async function handleDiscard() {
+    setActiveAction('discard')
+    try {
+      await onDiscard()
+    } finally {
+      setActiveAction(null)
+    }
   }
 
   return (
@@ -33,17 +45,18 @@ export default function ConflictDialog({ onKeepMine, onDiscard }: ConflictDialog
 
         <div className="flex gap-3 px-6 pb-5">
           <button
-            onClick={onDiscard}
-            className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
+            onClick={handleDiscard}
+            disabled={activeAction !== null}
+            className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-700 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Discard and reload
+            {activeAction === 'discard' ? 'Loading…' : 'Discard and reload'}
           </button>
           <button
             onClick={handleKeepMine}
-            disabled={isSaving}
+            disabled={activeAction !== null}
             className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[var(--brand)] rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? 'Saving…' : 'Keep my changes'}
+            {activeAction === 'keep' ? 'Saving…' : 'Keep my changes'}
           </button>
         </div>
       </div>

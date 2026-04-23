@@ -20,6 +20,17 @@ interface UseAutoSaveReturn {
   dismissConflict: () => void
   forceSave: () => Promise<void>
   saveNow: () => Promise<void>
+  /** Called when a realtime event reports this entry was updated elsewhere and
+   *  the local tab has no dirty edits. Marks the passed payload as the new
+   *  server-truth so the debounced save and pending-flip effects recognise the
+   *  current content as already in sync and skip redundant writes. */
+  applyServerUpdate: (newUpdatedAt: string, syncedContent: unknown) => void
+  /** Opens the conflict dialog without attempting a save. Used when realtime
+   *  tells us the server changed and we have dirty local edits. */
+  triggerConflict: () => void
+  /** Returns the `updated_at` the hook currently considers server-truth. Used
+   *  by the realtime consumer to filter out echoes of its own saves. */
+  getServerUpdatedAt: () => string
 }
 
 function sleep(ms: number): Promise<void> {
@@ -39,6 +50,13 @@ export function useAutoSave({
   const saveStatusRef = useRef<SaveStatus>('idle')
   const isInitialContentRender = useRef(true)
   const isInitialDebounceRender = useRef(true)
+  // Stringified snapshot of the content payload that matches what the server
+  // currently has (set after a successful save or after accepting a remote
+  // update via realtime). Used to short-circuit the pending flip and the
+  // debounced save when local content equals server content — without this,
+  // a realtime-driven apply would immediately fire a redundant UPDATE that
+  // echoes back to the other tab and triggers a ping-pong loop.
+  const syncedContentKeyRef = useRef<string | null>(null)
 
   // Always keep latest content in ref so forceSave/saveNow can use it
   useEffect(() => {
@@ -106,7 +124,21 @@ export function useAutoSave({
       return
     }
     if (!entryId) return
-    setSaveStatus((prev) => (prev === 'idle' || prev === 'saved' ? 'pending' : prev))
+    // Only the idle/saved states can flip to pending — in any other state
+    // setSaveStatus below is a no-op, so skip the stringify on hot keystroke
+    // paths (pending → pending).
+    const prevStatus = saveStatusRef.current
+    if (prevStatus !== 'idle' && prevStatus !== 'saved') return
+    // If the content matches what we know the server has, stay clean. This is
+    // the case right after a successful save, or right after applying a remote
+    // update via realtime.
+    if (
+      syncedContentKeyRef.current !== null &&
+      JSON.stringify(content) === syncedContentKeyRef.current
+    ) {
+      return
+    }
+    setSaveStatus('pending')
   }, [content, entryId])
 
   // Perform save when debounced value settles
@@ -120,12 +152,22 @@ export function useAutoSave({
     let cancelled = false
 
     async function doSave() {
+      // Bail if the content already matches what the server has — avoids a
+      // redundant UPDATE that would echo back through realtime and loop.
+      if (
+        syncedContentKeyRef.current !== null &&
+        JSON.stringify(latestContentRef.current) === syncedContentKeyRef.current
+      ) {
+        setSaveStatus('saved')
+        return
+      }
       setSaveStatus('saving')
       for (let attempt = 0; attempt < 3; attempt++) {
         if (cancelled) return
         if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1))
         if (cancelled) return
 
+        const sentKey = JSON.stringify(latestContentRef.current)
         try {
           const result = await updateEntry(
             entryId,
@@ -141,6 +183,7 @@ export function useAutoSave({
           }
           if ('success' in result) {
             serverUpdatedAtRef.current = result.updated_at
+            syncedContentKeyRef.current = sentKey
             setSaveStatus('saved')
             return
           }
@@ -169,6 +212,7 @@ export function useAutoSave({
     async (force: boolean) => {
       if (!entryId) return
       setSaveStatus('saving')
+      const sentKey = JSON.stringify(latestContentRef.current)
       try {
         const result = await updateEntry(
           entryId,
@@ -181,6 +225,7 @@ export function useAutoSave({
           setSaveStatus('idle')
         } else if ('success' in result) {
           serverUpdatedAtRef.current = result.updated_at
+          syncedContentKeyRef.current = sentKey
           setSaveStatus('saved')
           if (force) setConflictDetected(false)
         } else {
@@ -197,5 +242,29 @@ export function useAutoSave({
   const saveNow = useCallback(() => performSave(false), [performSave])
   const dismissConflict = useCallback(() => setConflictDetected(false), [])
 
-  return { saveStatus, setSaveStatus, conflictDetected, dismissConflict, forceSave, saveNow }
+  const applyServerUpdate = useCallback(
+    (newUpdatedAt: string, syncedContent: unknown) => {
+      serverUpdatedAtRef.current = newUpdatedAt
+      syncedContentKeyRef.current = JSON.stringify(syncedContent)
+      setSaveStatus('saved')
+      setConflictDetected(false)
+    },
+    [],
+  )
+
+  const triggerConflict = useCallback(() => setConflictDetected(true), [])
+
+  const getServerUpdatedAt = useCallback(() => serverUpdatedAtRef.current, [])
+
+  return {
+    saveStatus,
+    setSaveStatus,
+    conflictDetected,
+    dismissConflict,
+    forceSave,
+    saveNow,
+    applyServerUpdate,
+    triggerConflict,
+    getServerUpdatedAt,
+  }
 }

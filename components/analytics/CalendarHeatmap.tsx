@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -9,6 +10,18 @@ interface CalendarHeatmapProps {
   entries: { entryDate: string }[] // last 365 days
   initialYear: number
   initialMonth: number // 0-indexed
+}
+
+/** Parse the `?heatmap=YYYY-MM` URL param. Returns null for anything malformed
+ *  so the component falls back to the current month. */
+function parseHeatmapParam(value: string | null): { year: number; month: number } | null {
+  if (!value) return null
+  const match = value.match(/^(\d{4})-(\d{2})$/)
+  if (!match) return null
+  const year = Number(match[1])
+  const monthNumber = Number(match[2])
+  if (monthNumber < 1 || monthNumber > 12) return null
+  return { year, month: monthNumber - 1 }
 }
 
 // Four clearly distinct intensity levels
@@ -34,23 +47,42 @@ export default function CalendarHeatmap({
   initialYear,
   initialMonth,
 }: CalendarHeatmapProps) {
-  const [year, setYear] = useState(initialYear)
-  const [month, setMonth] = useState(initialMonth)
+  // Persist the viewed month in the URL (`?heatmap=YYYY-MM`) so it survives
+  // the force-remount the parent does when entries data changes, page
+  // refreshes, and shared links. `window.history.replaceState` keeps Next.js
+  // from re-fetching the server component on every arrow click.
+  const searchParams = useSearchParams()
+  const [year, setYearState] = useState<number>(() => {
+    const parsed = parseHeatmapParam(searchParams.get('heatmap'))
+    return parsed?.year ?? initialYear
+  })
+  const [month, setMonthState] = useState<number>(() => {
+    const parsed = parseHeatmapParam(searchParams.get('heatmap'))
+    return parsed?.month ?? initialMonth
+  })
 
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
   const isCurrentMonth = year === currentYear && month === currentMonth
 
+  function setYearMonth(y: number, m: number) {
+    setYearState(y)
+    setMonthState(m)
+    const sp = new URLSearchParams(window.location.search)
+    sp.set('heatmap', `${y}-${String(m + 1).padStart(2, '0')}`)
+    window.history.replaceState(null, '', `?${sp.toString()}`)
+  }
+
   function goBack() {
-    if (month === 0) { setYear((y) => y - 1); setMonth(11) }
-    else setMonth((m) => m - 1)
+    if (month === 0) setYearMonth(year - 1, 11)
+    else setYearMonth(year, month - 1)
   }
 
   function goForward() {
     if (isCurrentMonth) return
-    if (month === 11) { setYear((y) => y + 1); setMonth(0) }
-    else setMonth((m) => m + 1)
+    if (month === 11) setYearMonth(year + 1, 0)
+    else setYearMonth(year, month + 1)
   }
 
   // Build date→count map for the displayed month

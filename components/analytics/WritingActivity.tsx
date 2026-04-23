@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -88,12 +89,32 @@ function buildSeries(entries: EntryPoint[], range: Range): { labels: string[]; d
 // ---------------------------------------------------------------------------
 const RANGES: Range[] = ['7D', '30D', '12M']
 
+function isRange(v: string | null): v is Range {
+  return v === '7D' || v === '30D' || v === '12M'
+}
+
 export default function WritingActivity({ entries }: WritingActivityProps) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const [range, setRange] = useState<Range>('7D')
+  // The selector persists in the URL (`?range=30D`) so it survives the
+  // force-remount the parent does when entries data changes, page refreshes,
+  // and shared links. We read the URL once via useState initializer, then
+  // sync future changes with window.history.replaceState — using router.replace
+  // would trigger a server re-fetch on every click.
+  const searchParams = useSearchParams()
+  const [range, setRangeState] = useState<Range>(() => {
+    const initial = searchParams.get('range')
+    return isRange(initial) ? initial : '7D'
+  })
   const entriesRef = useRef(entries)
   entriesRef.current = entries
+
+  function setRange(r: Range) {
+    setRangeState(r)
+    const sp = new URLSearchParams(window.location.search)
+    sp.set('range', r)
+    window.history.replaceState(null, '', `?${sp.toString()}`)
+  }
 
   useEffect(() => {
     setMounted(true)

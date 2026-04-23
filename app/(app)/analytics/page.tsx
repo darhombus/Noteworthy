@@ -6,7 +6,7 @@ import CalendarHeatmap from '@/components/analytics/CalendarHeatmap'
 import EntriesByJournal from '@/components/analytics/EntriesByJournal'
 import TimePatterns from '@/components/analytics/TimePatterns'
 import TopTags from '@/components/analytics/TopTags'
-import AnalyticsRealtimeRefresh from '@/components/analytics/AnalyticsRealtimeRefresh'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 export const dynamic = 'force-dynamic'
 
@@ -158,7 +158,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="space-y-6 py-6">
-      <AnalyticsRealtimeRefresh />
+      <LiveDataRefresh />
 
       {/* Summary */}
       <AnalyticsSummary
@@ -171,9 +171,10 @@ export default async function AnalyticsPage() {
       {/* Writing activity (2/3) + calendar heatmap (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <WritingActivity entries={entryPoints} />
+          <WritingActivity key={entryPoints.length} entries={entryPoints} />
         </div>
         <CalendarHeatmap
+          key={entryPoints.length}
           entries={entryPoints}
           initialYear={today.getFullYear()}
           initialMonth={today.getMonth()}

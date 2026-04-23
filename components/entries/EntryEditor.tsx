@@ -6,6 +6,7 @@ import { ArrowLeft, MoreHorizontal } from 'lucide-react'
 import { EditorContent } from '@tiptap/react'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
+import { useEntryRealtime } from '@/hooks/useEntryRealtime'
 import SaveStatus from './SaveStatus'
 import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
@@ -17,6 +18,8 @@ import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
 import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
+import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 import type { LockType } from '@/components/lock/EntryLockPanel'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
@@ -115,13 +118,79 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     onChange: handleContentChange,
   })
 
-  const { saveStatus, conflictDetected, dismissConflict, forceSave, saveNow } = useAutoSave({
+  const {
+    saveStatus,
+    conflictDetected,
+    dismissConflict,
+    forceSave,
+    saveNow,
+    applyServerUpdate,
+    triggerConflict,
+    getServerUpdatedAt,
+  } = useAutoSave({
     content: savePayload,
     entryId: entry.entry_id,
     serverUpdatedAt: entry.updated_at,
   })
 
   useBeforeUnload(saveStatus)
+
+  // Live cross-tab sync — when the server row changes under us (e.g. another
+  // tab saved or used "Keep mine"), apply it in place if we have no dirty
+  // edits, or surface the conflict dialog proactively if we do. Without this,
+  // the other tab stays stale until its next save attempt hits a 409.
+  const saveStatusRef = useRef(saveStatus)
+  useEffect(() => {
+    saveStatusRef.current = saveStatus
+  }, [saveStatus])
+
+  // Overwrite local state with a freshly-fetched server row and mark it as
+  // the new sync point. Shared by the realtime clean-apply path and the
+  // "Discard and reload" button.
+  const applyRemoteRow = useCallback(
+    (newRow: Entry) => {
+      const newDoc: TiptapDoc = isTiptapDoc(newRow.content)
+        ? (newRow.content as TiptapDoc)
+        : EMPTY_TIPTAP_DOC
+      const newTitle = newRow.title ?? ''
+      const newDate = newRow.entry_date
+
+      setTitle(newTitle)
+      setEntryDate(newDate)
+      setContent(newDoc)
+      // `emitUpdate: false` suppresses Tiptap's onUpdate so we don't loop back
+      // through our own React state set above.
+      editor?.commands.setContent(newDoc, { emitUpdate: false })
+
+      // Must mirror the savePayload shape built in the useMemo above — any
+      // divergence here would leave the content effect flipping to 'pending'
+      // immediately and firing a redundant save.
+      applyServerUpdate(newRow.updated_at, {
+        content: newDoc,
+        title: newTitle || undefined,
+        entry_date: newDate,
+      })
+    },
+    [editor, applyServerUpdate],
+  )
+
+  useEntryRealtime(entry.entry_id, (newRow) => {
+    // Filter echoes of our own saves — the server broadcasts every UPDATE and
+    // we already applied this timestamp locally when the save succeeded.
+    if (newRow.updated_at === getServerUpdatedAt()) return
+
+    const isDirty =
+      saveStatusRef.current === 'pending' ||
+      saveStatusRef.current === 'saving' ||
+      saveStatusRef.current === 'error'
+
+    if (isDirty) {
+      triggerConflict()
+      return
+    }
+
+    applyRemoteRow(newRow)
+  })
 
   // `/image` slash command — typing it on an empty position opens the
   // upload modal. Minimal implementation; we strip the trigger text first
@@ -167,9 +236,25 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     router.push(`/journals/${journal.journal_id}`)
   }
 
-  function handleDiscard() {
+  async function handleDiscard() {
+    // Fetch the current server row and apply it over the in-progress edits.
+    // The Tiptap editor is uncontrolled, so we can't rely on router.refresh()
+    // alone to reset the body — `applyRemoteRow` both refreshes local state
+    // and calls `editor.commands.setContent` to replace the doc in place.
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('entries')
+      .select('*')
+      .eq('entry_id', entry.entry_id)
+      .single()
+
+    if (error || !data) {
+      toast.error('Could not load server version — please try again.')
+      return
+    }
+
+    applyRemoteRow(data)
     dismissConflict()
-    router.refresh()
   }
 
   return (

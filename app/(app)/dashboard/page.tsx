@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 import GreetingCard from '@/components/dashboard/GreetingCard'
 import StatsCards from '@/components/dashboard/StatsCards'
 import WeekActivity from '@/components/dashboard/WeekActivity'
@@ -196,6 +197,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 py-6">
+      <LiveDataRefresh />
       <GreetingCard fullName={fullName} lastEntryAt={lastEntryAt} />
 
       <StatsCards
@@ -211,7 +213,10 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left — stacked main widgets */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <WeekActivity days={weekActivityDays} />
+          <WeekActivity
+            key={weekActivityDays.map((d) => d.count).join(',')}
+            days={weekActivityDays}
+          />
           <RecentEntries entries={recentEntries} />
         </div>
 
