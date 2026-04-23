@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Lock, Eye, EyeOff, BookOpen, FileText } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Lock, Eye, EyeOff, BookOpen, FileText, ArrowLeft } from 'lucide-react'
 import { verifyLock } from '@/lib/actions/lock'
 
 interface LockScreenProps {
@@ -19,6 +20,7 @@ export default function LockScreen({
   entityName,
   onUnlock,
 }: LockScreenProps) {
+  const router = useRouter()
   const [pinDigits, setPinDigits] = useState<[string, string, string, string]>(['', '', '', ''])
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -92,7 +94,16 @@ export default function LockScreen({
   const Icon = entityType === 'journal' ? BookOpen : FileText
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center p-6">
+    <div className="relative min-h-[60vh] flex items-center justify-center p-6">
+      <button
+        type="button"
+        onClick={() => router.back()}
+        className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+        aria-label="Go back"
+      >
+        <ArrowLeft size={16} />
+        <span>Back</span>
+      </button>
       <div className="w-full max-w-[360px] flex flex-col items-center gap-6">
         {/* Icon cluster */}
         <div className="relative">

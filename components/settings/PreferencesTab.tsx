@@ -59,8 +59,8 @@ export default function PreferencesTab({ preferences }: Props) {
   const [dateFormat, setDateFormat] = useState<UserPreferences['dateFormat']>(
     preferences.dateFormat ?? 'DD/MM/YYYY',
   )
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState<'monday' | 'sunday'>(
-    preferences.firstDayOfWeek ?? 'monday',
+  const [autoLockMinutes, setAutoLockMinutes] = useState<number>(
+    preferences.autoLockMinutes ?? 5,
   )
 
   async function save(patch: Partial<UserPreferences>) {
@@ -113,19 +113,37 @@ export default function PreferencesTab({ preferences }: Props) {
         />
       </SectionCard>
 
-      {/* First day of week */}
-      <SectionCard title="First day of week">
+      {/* Auto-lock */}
+      <SectionCard title="Auto-lock locked journals and entries">
+        <p className="text-sm text-[#757575] dark:text-[#9E9E9E]">
+          After this much inactivity, an unlocked journal or entry re-prompts
+          for its PIN or password. Choose &ldquo;Off&rdquo; to keep things
+          unlocked until you navigate away.
+        </p>
         <RadioGroup
-          name="firstday"
+          name="autolock"
           options={[
-            { value: 'monday', label: 'Monday' },
-            { value: 'sunday', label: 'Sunday' },
+            { value: '0', label: 'Off' },
+            { value: '1', label: '1 minute' },
+            { value: '5', label: '5 minutes' },
+            { value: '15', label: '15 minutes' },
+            { value: '30', label: '30 minutes' },
           ]}
-          value={firstDayOfWeek}
+          value={String(autoLockMinutes)}
           onChange={async (v) => {
-            const day = v as 'monday' | 'sunday'
-            setFirstDayOfWeek(day)
-            await save({ firstDayOfWeek: day })
+            const mins = Number(v)
+            setAutoLockMinutes(mins)
+            // Same-tab listeners (e.g. an open LockGate) react immediately…
+            window.dispatchEvent(
+              new CustomEvent('nw:auto-lock-changed', { detail: mins }),
+            )
+            // …and cross-tab via BroadcastChannel.
+            if (typeof BroadcastChannel !== 'undefined') {
+              const ch = new BroadcastChannel('nw:preferences')
+              ch.postMessage({ autoLockMinutes: mins })
+              ch.close()
+            }
+            await save({ autoLockMinutes: mins })
           }}
         />
       </SectionCard>

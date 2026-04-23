@@ -14,6 +14,12 @@ interface UIState {
   profileAvatarUrl: string | null
   setProfileName: (name: string) => void
   setProfileAvatarUrl: (url: string | null) => void
+  // Breadcrumb: maps a dynamic-route id (journalId, entryId, …) to its
+  // display title. Pages register here via <BreadcrumbTitle> so the TopBar
+  // can show "Journals > My Diary > First Entry" instead of raw UUIDs.
+  breadcrumbTitles: Record<string, string>
+  setBreadcrumbTitle: (id: string, title: string) => void
+  clearBreadcrumbTitle: (id: string) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -29,4 +35,18 @@ export const useUIStore = create<UIState>((set) => ({
   profileAvatarUrl: null,
   setProfileName: (name) => set({ profileName: name }),
   setProfileAvatarUrl: (url) => set({ profileAvatarUrl: url }),
+  breadcrumbTitles: {},
+  setBreadcrumbTitle: (id, title) =>
+    set((s) =>
+      s.breadcrumbTitles[id] === title
+        ? s
+        : { breadcrumbTitles: { ...s.breadcrumbTitles, [id]: title } },
+    ),
+  clearBreadcrumbTitle: (id) =>
+    set((s) => {
+      if (!(id in s.breadcrumbTitles)) return s
+      const next = { ...s.breadcrumbTitles }
+      delete next[id]
+      return { breadcrumbTitles: next }
+    }),
 }))
