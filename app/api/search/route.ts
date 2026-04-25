@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 
 const searchParamsSchema = z.object({
@@ -10,6 +11,7 @@ const searchParamsSchema = z.object({
   to: z.string().optional(),
   pinned: z.literal('true').optional(),
   tagIds: z.string().optional(),
+  scope: z.literal('hidden').optional(),
 })
 
 type SearchRpcRow = {
@@ -31,6 +33,7 @@ type SearchRpcArgs = {
   p_to?: string
   p_pinned?: boolean
   p_tag_ids?: string[]
+  p_include_hidden?: boolean
 }
 
 type SearchRpcClient = {
@@ -126,6 +129,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ journals: [], entries: [] })
   }
 
+  // ── Scope: hidden ──────────────────────────────────────────────────────────
+  // EntryList passes scope=hidden when rendered under /hidden/journals/<id> so
+  // the user can search/filter within an unlocked hidden journal. We only
+  // honour it when (a) the vault is open, (b) a journalId is provided, and
+  // (c) that journal is owned by the user and is itself is_hidden=true.
+  // Any failure falls back to "exclude hidden" rather than 4xx so a stale
+  // tab doesn't surface a confusing error mid-search.
+  let includeHidden = false
+  if (params.scope === 'hidden') {
+    if (params.journalId && (await isVaultOpen(session.user.id))) {
+      const { data: hiddenJournal } = await supabase
+        .from('journals')
+        .select('journal_id')
+        .eq('journal_id', params.journalId)
+        .eq('user_id', session.user.id)
+        .eq('is_hidden', true)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (hiddenJournal) includeHidden = true
+    }
+  }
+
   // ── Tag-only mode ──────────────────────────────────────────────────────────
   // When there is no text query but tag IDs are present, skip the FTS RPC and
   // query entries by tag relationship directly.
@@ -162,11 +187,17 @@ export async function GET(request: NextRequest) {
       .from('entries')
       .select(
         'entry_id, title, journal_id, entry_date, word_count, is_pinned, content, ' +
-        'journals!inner(title, color), ' +
+        'journals!inner(title, color, is_hidden), ' +
         'entry_tags(tags(tag_id, tag_name, color))',
       )
       .in('entry_id', entryIds)
       .is('deleted_at', null)
+
+    if (!includeHidden) {
+      tagOnlyQuery = tagOnlyQuery
+        .eq('is_hidden', false)
+        .eq('journals.is_hidden', false)
+    }
 
     if (params.journalId) tagOnlyQuery = tagOnlyQuery.eq('journal_id', params.journalId)
     if (params.from) tagOnlyQuery = tagOnlyQuery.gte('entry_date', params.from)
@@ -223,6 +254,7 @@ export async function GET(request: NextRequest) {
   if (params.to) rpcArgs.p_to = params.to
   if (params.pinned === 'true') rpcArgs.p_pinned = true
   if (tagIdArray && tagIdArray.length > 0) rpcArgs.p_tag_ids = tagIdArray
+  if (includeHidden) rpcArgs.p_include_hidden = true
 
   const queryWords = params.q.trim().split(/\s+/).filter(Boolean)
   const likePattern = `%${params.q}%`
@@ -235,6 +267,7 @@ export async function GET(request: NextRequest) {
       .from('journals')
       .select('journal_id, title, description, color, icon, entry_count, is_favorite, updated_at')
       .eq('user_id', session.user.id)
+      .eq('is_hidden', false)
       .is('deleted_at', null)
       .ilike('title', likePattern)
       .order('is_favorite', { ascending: false })
@@ -244,6 +277,7 @@ export async function GET(request: NextRequest) {
       .from('journals')
       .select('journal_id, title, description, color, icon, entry_count, is_favorite, updated_at')
       .eq('user_id', session.user.id)
+      .eq('is_hidden', false)
       .is('deleted_at', null)
       .ilike('description', likePattern)
       .order('is_favorite', { ascending: false })

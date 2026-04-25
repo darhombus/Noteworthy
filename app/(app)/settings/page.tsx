@@ -29,9 +29,14 @@ export default async function SettingsPage({ searchParams }: Props) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url, preferences')
+    .select('full_name, avatar_url, preferences, privacy_pin_type')
     .eq('user_id', user.id)
     .single()
+
+  const privacyPinType = (profile?.privacy_pin_type ?? 'none') as
+    | 'none'
+    | 'pin'
+    | 'password'
 
   const preferences: UserPreferences =
     profile?.preferences &&
@@ -87,6 +92,7 @@ export default async function SettingsPage({ searchParams }: Props) {
           storageLimit={storageLimit}
           imageUsage={imageUsage}
           videoUsage={videoUsage}
+          privacyPinType={privacyPinType}
         />
       )}
     </div>

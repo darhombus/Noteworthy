@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
-import { Calendar, MoreHorizontal, Pin, Lock, LockOpen } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
+import { Calendar, MoreHorizontal, Pin, Lock, LockOpen, Shield } from 'lucide-react'
+import { entryEditorHref } from '@/lib/utils/entryRoute'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { togglePin } from '@/lib/actions/entries'
+import { hideEntry, unhideEntry } from '@/lib/actions/privacy'
 import type { Database } from '@/types/supabase'
 import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import TagChip from '@/components/ui/TagChip'
@@ -49,6 +51,7 @@ export default function EntryCard({
   tags = [],
 }: EntryCardProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isPinned, setIsPinned] = useState(entry.is_pinned)
@@ -88,6 +91,31 @@ export default function EntryCard({
       setIsPinned(prev)
       toast.error('Failed to update pin')
     } else {
+      router.refresh()
+    }
+  }
+
+  async function handleHide() {
+    const action = entry.is_hidden ? unhideEntry : hideEntry
+    const result = await action(entry.entry_id)
+    if ('error' in result) {
+      if ('code' in result && result.code === 'no_pin') {
+        toast.error(result.error, {
+          action: {
+            label: 'Set up',
+            onClick: () => router.push('/hidden'),
+          },
+          actionButtonStyle: {
+            background: '#1976D2',
+            color: '#FFFFFF',
+            fontWeight: 600,
+          },
+        })
+      } else {
+        toast.error(result.error)
+      }
+    } else {
+      toast.success(entry.is_hidden ? 'Entry unhidden' : 'Entry hidden')
       router.refresh()
     }
   }
@@ -150,7 +178,7 @@ export default function EntryCard({
   return (
     <div
       className={`relative flex items-stretch bg-[var(--bg-surface)] rounded-xl overflow-hidden cursor-pointer border border-[var(--border)] transition-transform ${menuOpen ? '' : 'hover:translate-x-0.5'}`}
-      onClick={() => router.push(`/journals/${journalId}/entries/${entry.entry_id}`)}
+      onClick={() => router.push(entryEditorHref(pathname, journalId, entry.entry_id))}
     >
       {/* Accent left bar */}
       <div
@@ -266,6 +294,13 @@ export default function EntryCard({
               ? <Lock size={13} className="text-[#1976D2]" />
               : <LockOpen size={13} className="text-[#9E9E9E]" />}
             {entry.lock_type !== 'none' ? 'Change lock' : 'Lock entry'}
+          </button>
+          <button
+            onClick={() => { setMenuOpen(false); handleHide() }}
+            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            <Shield size={13} className={entry.is_hidden ? 'text-[#1976D2]' : 'text-[#9E9E9E]'} />
+            {entry.is_hidden ? 'Unhide entry' : 'Hide entry'}
           </button>
           <button
             onClick={() => { setMenuOpen(false); onDelete(entry) }}

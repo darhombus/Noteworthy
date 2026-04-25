@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { AlertTriangle, Lock, Eye, EyeOff, X } from 'lucide-react'
+import { isHiddenPathname, journalListHref } from '@/lib/utils/entryRoute'
 import { toast } from 'sonner'
 import { softDeleteEntry } from '@/lib/actions/entries'
 import { verifyLock } from '@/lib/actions/lock'
@@ -16,6 +17,7 @@ interface DeleteEntryModalProps {
 
 export default function DeleteEntryModal({ entryId, journalId, lockType, onClose }: DeleteEntryModalProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [isDeleting, setIsDeleting] = useState(false)
   const [pinDigits, setPinDigits] = useState<[string, string, string, string]>(['', '', '', ''])
   const [password, setPassword] = useState('')
@@ -80,6 +82,17 @@ export default function DeleteEntryModal({ entryId, journalId, lockType, onClose
     }
     onClose()
     toast.success('Entry moved to recycle bin')
+    // Stay in the hidden context when deleting from /hidden/**. For the
+    // standalone hidden-entry editor (/hidden/entries/<eid>) there's no
+    // parent-journal list on the hidden side, so fall back to /hidden.
+    if (isHiddenPathname(pathname)) {
+      if (pathname.startsWith('/hidden/journals/')) {
+        router.push(journalListHref(pathname, journalId))
+      } else {
+        router.push('/hidden')
+      }
+      return
+    }
     router.push(`/journals/${journalId}`)
   }
 

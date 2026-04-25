@@ -19,12 +19,15 @@ export default async function RecycleBinPage() {
   const [{ data: entries }, { data: journals }] = await Promise.all([
     supabase
       .from('entries')
-      .select('entry_id, title, deleted_at, journals!inner(title)')
-      .not('deleted_at', 'is', null),
+      .select('entry_id, title, deleted_at, is_hidden, journals!inner(title, is_hidden)')
+      .not('deleted_at', 'is', null)
+      .eq('is_hidden', false)
+      .eq('journals.is_hidden', false),
     supabase
       .from('journals')
       .select('journal_id, title, deleted_at')
       .eq('user_id', user.id)
+      .eq('is_hidden', false)
       .not('deleted_at', 'is', null),
   ])
 

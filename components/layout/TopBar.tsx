@@ -12,9 +12,15 @@ const SECTION_LABELS: Record<string, string> = {
   journals:     'Journals',
   analytics:    'Analytics',
   tags:         'Tags',
+  hidden:       'Hidden',
   'recycle-bin':'Recycle Bin',
   settings:     'Settings',
 }
+
+// Segments under /hidden/... that are just grouping, not visitable pages.
+// e.g. /hidden/journals/abc should render "Hidden > [journal]" — the
+// "journals" segment here is a router grouping, not its own breadcrumb.
+const HIDDEN_STRUCTURAL_SEGMENTS = new Set(['journals', 'entries'])
 
 // Path segments that are structural grouping only (no crumb of their own).
 // e.g. /journals/abc/entries/def renders "Journals > [journal] > [entry]" —
@@ -30,12 +36,17 @@ function buildCrumbs(pathname: string, titles: Record<string, string>): Crumb[] 
   const parts = pathname.split('/').filter(Boolean)
   const crumbs: Crumb[] = []
   let href = ''
+  const inHidden = parts[0] === 'hidden'
 
   for (let i = 0; i < parts.length; i++) {
     const segment = parts[i]
     href += `/${segment}`
 
     if (STRUCTURAL_SEGMENTS.has(segment)) continue
+    // Under /hidden/**, the "journals" segment is just a grouping
+    // (/hidden/journals doesn't exist as a page). Skip it so the
+    // breadcrumb reads "Hidden > <journal>" instead of "Hidden > Journals > <journal>".
+    if (inHidden && i > 0 && HIDDEN_STRUCTURAL_SEGMENTS.has(segment)) continue
 
     const sectionLabel = SECTION_LABELS[segment]
     const label = sectionLabel ?? titles[segment] ?? fallbackLabel(segment, parts, i)

@@ -2,6 +2,7 @@ import Sidebar, { type SidebarUser } from './Sidebar'
 import TopBar from './TopBar'
 import InactivityModal from './InactivityModal'
 import SearchOverlay from './SearchOverlay'
+import VaultAutoLock from '@/components/privacy/VaultAutoLock'
 
 interface AppShellProps {
   user: SidebarUser
@@ -27,6 +28,7 @@ export default function AppShell({ user, children }: AppShellProps) {
 
       <InactivityModal />
       <SearchOverlay />
+      <VaultAutoLock />
     </div>
   )
 }

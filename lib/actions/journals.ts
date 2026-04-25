@@ -41,6 +41,7 @@ export async function createJournal(
   if (error) return { error: error.message }
 
   revalidatePath('/journals')
+  revalidatePath('/hidden')
   return { journal }
 }
 
@@ -70,6 +71,7 @@ export async function updateJournal(
   if (error) return { error: error.message }
 
   revalidatePath('/journals')
+  revalidatePath('/hidden')
   return { journal }
 }
 
@@ -144,6 +146,7 @@ export async function deleteJournal(
   if (error) return { error: error.message }
 
   revalidatePath('/journals')
+  revalidatePath('/hidden')
   return { success: true }
 }
 
@@ -166,5 +169,6 @@ export async function toggleFavourite(
   if (error) return { error: error.message }
 
   revalidatePath('/journals')
+  revalidatePath('/hidden')
   return { success: true }
 }

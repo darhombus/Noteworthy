@@ -10,6 +10,7 @@ import {
   Tag,
   Trash2,
   Settings,
+  Shield,
   X,
   LogOut,
 } from 'lucide-react'
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/journals',    label: 'Journals',     Icon: BookOpen },
   { href: '/analytics',   label: 'Analytics',   Icon: BarChart2 },
   { href: '/tags',        label: 'Tags',         Icon: Tag },
+  { href: '/hidden',      label: 'Hidden',       Icon: Shield },
   { href: '/recycle-bin', label: 'Recycle Bin',  Icon: Trash2 },
   { href: '/settings',    label: 'Settings',     Icon: Settings },
 ]

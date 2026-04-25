@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Lock, Eye, EyeOff, BookOpen, FileText, ArrowLeft } from 'lucide-react'
 import { verifyLock } from '@/lib/actions/lock'
 
@@ -21,6 +21,7 @@ export default function LockScreen({
   onUnlock,
 }: LockScreenProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [pinDigits, setPinDigits] = useState<[string, string, string, string]>(['', '', '', ''])
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -93,11 +94,21 @@ export default function LockScreen({
 
   const Icon = entityType === 'journal' ? BookOpen : FileText
 
+  // Navigate to the parent route rather than using router.back(). The previous
+  // history entry is usually the page that pushed us into this locked view
+  // (e.g. an entry inside the journal we just got locked out of), so going
+  // back there just bounces the user straight into the same lock gate again.
+  // Derive the safe parent from the pathname instead.
+  const backHref =
+    entityType === 'entry'
+      ? pathname.split('/').slice(0, -2).join('/') || '/journals'
+      : '/journals'
+
   return (
     <div className="relative min-h-[60vh] flex items-center justify-center p-6">
       <button
         type="button"
-        onClick={() => router.back()}
+        onClick={() => router.push(backHref)}
         className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
         aria-label="Go back"
       >

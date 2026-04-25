@@ -166,11 +166,14 @@ export async function GET(request: NextRequest) {
 
   let rows: EntryRow[]
 
+  // Hidden journals/entries are excluded from every export scope. The user
+  // can unhide them temporarily from /hidden if they want them in the dump.
   if (scope === 'entry') {
     const { data, error } = await supabase
       .from('entries')
       .select(ENTRY_SELECT)
       .eq('entry_id', entryId!)
+      .eq('is_hidden', false)
       .is('deleted_at', null)
       .single()
 
@@ -179,11 +182,12 @@ export async function GET(request: NextRequest) {
     }
     rows = [data as unknown as EntryRow]
   } else if (scope === 'journal') {
-    // Verify journal is accessible (RLS + ownership)
+    // Verify journal is accessible (RLS + ownership) — and not hidden.
     const { data: journalCheck } = await supabase
       .from('journals')
       .select('journal_id')
       .eq('journal_id', journalId!)
+      .eq('is_hidden', false)
       .single()
 
     if (!journalCheck) {
@@ -194,6 +198,7 @@ export async function GET(request: NextRequest) {
       .from('entries')
       .select(ENTRY_SELECT)
       .eq('journal_id', journalId!)
+      .eq('is_hidden', false)
       .is('deleted_at', null)
       .order('entry_date', { ascending: false })
 
@@ -204,13 +209,25 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     rows = (data ?? []) as unknown as EntryRow[]
   } else {
-    // scope === 'all' — RLS ensures only the user's entries are returned
+    // scope === 'all' — RLS ensures only the user's entries are returned.
+    // Pre-fetch hidden journal ids so entries inside hidden journals are
+    // excluded too (entries.is_hidden alone wouldn't catch those).
+    const { data: hiddenJournalRows } = await supabase
+      .from('journals')
+      .select('journal_id')
+      .eq('is_hidden', true)
+    const hiddenJournalIds = (hiddenJournalRows ?? []).map((r) => r.journal_id)
+
     let q = supabase
       .from('entries')
       .select(ENTRY_SELECT)
+      .eq('is_hidden', false)
       .is('deleted_at', null)
       .order('entry_date', { ascending: false })
 
+    if (hiddenJournalIds.length > 0) {
+      q = q.not('journal_id', 'in', `(${hiddenJournalIds.join(',')})`)
+    }
     if (from) q = q.gte('entry_date', from)
     if (to) q = q.lte('entry_date', to)
 

@@ -191,6 +191,8 @@ export async function setLock(
 
     revalidatePath('/journals')
     revalidatePath(`/journals/${entityId}`)
+    revalidatePath(`/hidden/journals/${entityId}`)
+    revalidatePath('/hidden')
     return { success: true }
   }
 
@@ -217,6 +219,7 @@ export async function setLock(
       .eq('entry_id', entityId)
     if (error) return { error: error.message }
     revalidatePath('/journals', 'layout')
+    revalidatePath('/hidden', 'layout')
     return { success: true }
   }
 
@@ -242,6 +245,7 @@ export async function setLock(
     if (eErr) return { error: eErr.message }
 
     revalidatePath('/journals', 'layout')
+    revalidatePath('/hidden', 'layout')
     return { success: true }
   }
 
@@ -263,6 +267,7 @@ export async function setLock(
   if (eErr) return { error: eErr.message }
 
   revalidatePath('/journals', 'layout')
+  revalidatePath('/hidden', 'layout')
   return { success: true }
 }
 
@@ -324,6 +329,7 @@ export async function changeJournalEntryLock(
     if (eErr) return { error: eErr.message }
 
     revalidatePath('/journals', 'layout')
+    revalidatePath('/hidden', 'layout')
     return { success: true }
   }
 
@@ -349,5 +355,6 @@ export async function changeJournalEntryLock(
   if (eErr) return { error: eErr.message }
 
   revalidatePath('/journals', 'layout')
+  revalidatePath('/hidden', 'layout')
   return { success: true }
 }

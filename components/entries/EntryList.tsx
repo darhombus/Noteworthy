@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X } from 'lucide-react'
+import { entryEditorHref, isHiddenPathname } from '@/lib/utils/entryRoute'
 import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -154,6 +155,7 @@ function removeHashTag(query: string, tagName: string): string {
 
 export default function EntryList({ journal, entries }: EntryListProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null)
@@ -276,6 +278,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
       if (toDate) url.searchParams.set('to', toDate)
       if (pinnedOnly) url.searchParams.set('pinned', 'true')
       if (tagIds.length > 0) url.searchParams.set('tagIds', tagIds.join(','))
+      if (isHiddenPathname(pathname)) url.searchParams.set('scope', 'hidden')
 
       const res = await fetch(url.toString(), { signal: controller.signal })
 
@@ -355,7 +358,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
       return
     }
 
-    router.push(`/journals/${journal.journal_id}/entries/${result.entry_id}`)
+    router.push(entryEditorHref(pathname, journal.journal_id, result.entry_id))
   }
 
   const isTextSearchActive = debouncedText.trim().length > 0
@@ -601,7 +604,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                 <button
                   key={result.entry_id}
                   onClick={() =>
-                    router.push(`/journals/${result.journal_id}/entries/${result.entry_id}`)
+                    router.push(entryEditorHref(pathname, result.journal_id, result.entry_id))
                   }
                   className="w-full text-left bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors"
                 >

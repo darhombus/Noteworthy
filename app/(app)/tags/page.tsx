@@ -16,6 +16,17 @@ export default async function TagsPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Exclude entries that are themselves hidden, or whose parent journal is
+  // hidden — both should be invisible from the tag detail view.
+  const { data: hiddenJournalRows } = await supabase
+    .from('journals')
+    .select('journal_id')
+    .eq('user_id', user.id)
+    .eq('is_hidden', true)
+  const hiddenJournalIds = new Set(
+    (hiddenJournalRows ?? []).map((r) => r.journal_id),
+  )
+
   const [{ data: tags }, { data: entryTagRows }] = await Promise.all([
     supabase
       .from('tags')
@@ -24,7 +35,8 @@ export default async function TagsPage() {
       .order('tag_name', { ascending: true }),
     supabase
       .from('entry_tags')
-      .select('tag_id, entries(entry_id, title, journal_id)'),
+      .select('tag_id, entries!inner(entry_id, title, journal_id, is_hidden)')
+      .eq('entries.is_hidden', false),
   ])
 
   const tagList = tags ?? []
@@ -32,8 +44,13 @@ export default async function TagsPage() {
   // Build map: tag_id → list of entries
   const tagEntriesMap: Record<string, TagEntryRef[]> = {}
   for (const row of entryTagRows ?? []) {
-    const entry = row.entries as unknown as { entry_id: string; title: string | null; journal_id: string } | null
+    const entry = row.entries as unknown as {
+      entry_id: string
+      title: string | null
+      journal_id: string
+    } | null
     if (!entry) continue
+    if (hiddenJournalIds.has(entry.journal_id)) continue
     if (!tagEntriesMap[row.tag_id]) tagEntriesMap[row.tag_id] = []
     tagEntriesMap[row.tag_id].push({
       entry_id: entry.entry_id,

@@ -59,6 +59,11 @@ export async function createEntry(
   if (error) return { error: error.message }
 
   revalidatePath(`/journals/${parsed.data.journal_id}`)
+  // The parent journal may be hidden, in which case the user created this
+  // entry from inside /hidden/journals/<jid>. Revalidate the hidden mirror
+  // so the list updates immediately.
+  revalidatePath(`/hidden/journals/${parsed.data.journal_id}`)
+  revalidatePath('/hidden')
   return { entry_id: entry.entry_id }
 }
 
@@ -128,6 +133,7 @@ export async function updateEntry(
   }
 
   revalidatePath('/journals', 'layout')
+  revalidatePath('/hidden', 'layout')
   return { success: true, updated_at: updated.updated_at }
 }
 
@@ -165,6 +171,8 @@ export async function softDeleteEntry(
   if (error) return { error: error.message }
 
   revalidatePath(`/journals/${journalId}`)
+  revalidatePath(`/hidden/journals/${journalId}`)
+  revalidatePath('/hidden')
   return { success: true }
 }
 
@@ -186,5 +194,6 @@ export async function togglePin(
   if (error) return { error: error.message }
 
   revalidatePath('/journals', 'layout')
+  revalidatePath('/hidden', 'layout')
   return { success: true }
 }

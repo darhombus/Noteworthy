@@ -4,9 +4,12 @@ import EntryList from '@/components/entries/EntryList'
 import LiveDataRefresh from '@/components/LiveDataRefresh'
 import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import type { UserPreferences } from '@/lib/actions/settings'
 
-interface JournalPageProps {
+export const dynamic = 'force-dynamic'
+
+interface HiddenJournalPageProps {
   params: Promise<{ journalId: string }>
 }
 
@@ -14,7 +17,13 @@ interface RawEntryTag {
   tags: { tag_id: string; tag_name: string; color: string } | null
 }
 
-export default async function JournalPage({ params }: JournalPageProps) {
+/**
+ * Hidden-journal detail page. Only renders when the Privacy Vault is open
+ * AND the target journal is actually marked is_hidden. Individually-hidden
+ * entries still don't show in this list (those live at /hidden/entries);
+ * a hidden journal's non-hidden children are what's surfaced here.
+ */
+export default async function HiddenJournalPage({ params }: HiddenJournalPageProps) {
   const { journalId } = await params
   const supabase = await createClient()
   const {
@@ -22,17 +31,15 @@ export default async function JournalPage({ params }: JournalPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // This is the "public" journal route. Hidden journals and hidden entries
-  // are fully gated off to /hidden/** — this route never surfaces them,
-  // regardless of vault state. (See app/(app)/hidden/journals/[journalId]
-  // for the hidden mirror.)
+  if (!(await isVaultOpen(user.id))) redirect('/hidden')
+
   const [{ data: journal }, { data: rawEntries }, { data: profile }] = await Promise.all([
     supabase
       .from('journals')
       .select('*')
       .eq('journal_id', journalId)
       .eq('user_id', user.id)
-      .eq('is_hidden', false)
+      .eq('is_hidden', true)
       .is('deleted_at', null)
       .single(),
     supabase
@@ -58,7 +65,6 @@ export default async function JournalPage({ params }: JournalPageProps) {
       : {}
   const autoLockMinutes = preferences.autoLockMinutes ?? 5
 
-  // Flatten nested entry_tags → tags array
   const entries = (rawEntries ?? []).map((entry) => {
     const { entry_tags, ...rest } = entry as unknown as (typeof entry & { entry_tags: RawEntryTag[] })
     const tags = (entry_tags ?? ([] as RawEntryTag[]))

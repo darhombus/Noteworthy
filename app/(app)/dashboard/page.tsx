@@ -93,7 +93,48 @@ export default async function DashboardPage() {
   firstOfMonth.setDate(1)
   const firstOfMonthStr = firstOfMonth.toISOString().split('T')[0]
 
+  // Pre-fetch hidden journal ids so every entry query can exclude entries
+  // belonging to hidden journals in addition to entries that are hidden
+  // themselves. Stats stay consistent with what the user sees on /journals.
+  const { data: hiddenJournalRows } = await supabase
+    .from('journals')
+    .select('journal_id')
+    .eq('user_id', user.id)
+    .eq('is_hidden', true)
+  const hiddenJournalIdList = `(${(hiddenJournalRows ?? [])
+    .map((r) => r.journal_id)
+    .join(',')})`
+  const hasHiddenJournals = (hiddenJournalRows ?? []).length > 0
+
   // Run all fetches in parallel
+  const totalCountQuery = supabase
+    .from('entries')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+
+  const monthCountQuery = supabase
+    .from('entries')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+    .gte('entry_date', firstOfMonthStr)
+
+  const allDatesQuery = supabase
+    .from('entries')
+    .select('entry_date, created_at')
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+    .order('entry_date', { ascending: false })
+
+  const recentEntriesQuery = supabase
+    .from('entries')
+    .select('entry_id, title, entry_date, word_count, journal_id, journals(title, color)')
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
   const [
     profileResult,
     totalCountResult,
@@ -108,31 +149,21 @@ export default async function DashboardPage() {
       .eq('user_id', user.id)
       .single(),
 
-    supabase
-      .from('entries')
-      .select('*', { count: 'exact', head: true })
-      .is('deleted_at', null),
+    hasHiddenJournals
+      ? totalCountQuery.not('journal_id', 'in', hiddenJournalIdList)
+      : totalCountQuery,
 
-    supabase
-      .from('entries')
-      .select('*', { count: 'exact', head: true })
-      .is('deleted_at', null)
-      .gte('entry_date', firstOfMonthStr),
+    hasHiddenJournals
+      ? monthCountQuery.not('journal_id', 'in', hiddenJournalIdList)
+      : monthCountQuery,
 
-    // All entry dates + latest created_at for streak & week chart
-    supabase
-      .from('entries')
-      .select('entry_date, created_at')
-      .is('deleted_at', null)
-      .order('entry_date', { ascending: false }),
+    hasHiddenJournals
+      ? allDatesQuery.not('journal_id', 'in', hiddenJournalIdList)
+      : allDatesQuery,
 
-    // Last 5 entries with journal metadata
-    supabase
-      .from('entries')
-      .select('entry_id, title, entry_date, word_count, journal_id, journals(title, color)')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(5),
+    hasHiddenJournals
+      ? recentEntriesQuery.not('journal_id', 'in', hiddenJournalIdList)
+      : recentEntriesQuery,
 
     supabase
       .from('tags')

@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2, Shield } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
+import { hideJournal, unhideJournal } from '@/lib/actions/privacy'
 import ExportModal from '@/components/ExportModal'
 import BookIcon from '@/components/ui/BookIcon'
 import type { Database } from '@/types/supabase'
@@ -68,6 +69,31 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
       setIsFav(prev)
       toast.error('Failed to update favourite')
     } else {
+      router.refresh()
+    }
+  }
+
+  async function handleHide() {
+    const action = journal.is_hidden ? unhideJournal : hideJournal
+    const result = await action(journal.journal_id)
+    if ('error' in result) {
+      if ('code' in result && result.code === 'no_pin') {
+        toast.error(result.error, {
+          action: {
+            label: 'Set up',
+            onClick: () => router.push('/hidden'),
+          },
+          actionButtonStyle: {
+            background: '#1976D2',
+            color: '#FFFFFF',
+            fontWeight: 600,
+          },
+        })
+      } else {
+        toast.error(result.error)
+      }
+    } else {
+      toast.success(journal.is_hidden ? 'Journal unhidden' : 'Journal hidden')
       router.refresh()
     }
   }
@@ -214,6 +240,14 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           >
             <Download size={14} className="text-[#9E9E9E] shrink-0" />
             <span>Export journal</span>
+          </button>
+
+          <button
+            onClick={() => { setMenuOpen(false); handleHide() }}
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            <Shield size={14} className={journal.is_hidden ? 'text-[#1976D2] shrink-0' : 'text-[#9E9E9E] shrink-0'} />
+            <span>{journal.is_hidden ? 'Unhide journal' : 'Hide journal'}</span>
           </button>
 
           <div className="my-1 border-t border-[var(--border)]" />

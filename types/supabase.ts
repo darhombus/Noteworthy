@@ -19,6 +19,7 @@ export type Database = {
           deleted_at: string | null
           entry_date: string
           entry_id: string
+          is_hidden: boolean
           is_pinned: boolean
           journal_id: string
           lock_hash: string | null
@@ -33,6 +34,7 @@ export type Database = {
           deleted_at?: string | null
           entry_date?: string
           entry_id?: string
+          is_hidden?: boolean
           is_pinned?: boolean
           journal_id: string
           lock_hash?: string | null
@@ -47,6 +49,7 @@ export type Database = {
           deleted_at?: string | null
           entry_date?: string
           entry_id?: string
+          is_hidden?: boolean
           is_pinned?: boolean
           journal_id?: string
           lock_hash?: string | null
@@ -109,6 +112,7 @@ export type Database = {
           entry_lock_type: string
           icon: string
           is_favorite: boolean
+          is_hidden: boolean
           journal_id: string
           lock_hash: string | null
           lock_type: string
@@ -127,6 +131,7 @@ export type Database = {
           entry_lock_type?: string
           icon?: string
           is_favorite?: boolean
+          is_hidden?: boolean
           journal_id?: string
           lock_hash?: string | null
           lock_type?: string
@@ -145,6 +150,7 @@ export type Database = {
           entry_lock_type?: string
           icon?: string
           is_favorite?: boolean
+          is_hidden?: boolean
           journal_id?: string
           lock_hash?: string | null
           lock_type?: string
@@ -217,6 +223,8 @@ export type Database = {
           created_at: string
           full_name: string
           preferences: Json
+          privacy_pin_hash: string | null
+          privacy_pin_type: string
           updated_at: string
           user_id: string
         }
@@ -225,6 +233,8 @@ export type Database = {
           created_at?: string
           full_name?: string
           preferences?: Json
+          privacy_pin_hash?: string | null
+          privacy_pin_type?: string
           updated_at?: string
           user_id: string
         }
@@ -233,6 +243,8 @@ export type Database = {
           created_at?: string
           full_name?: string
           preferences?: Json
+          privacy_pin_hash?: string | null
+          privacy_pin_type?: string
           updated_at?: string
           user_id?: string
         }

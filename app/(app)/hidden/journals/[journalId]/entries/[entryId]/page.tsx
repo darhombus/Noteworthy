@@ -3,9 +3,12 @@ import { createClient } from '@/lib/supabase/server'
 import EntryEditor from '@/components/entries/EntryEditor'
 import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import type { UserPreferences } from '@/lib/actions/settings'
 
-interface EntryPageProps {
+export const dynamic = 'force-dynamic'
+
+interface HiddenJournalEntryPageProps {
   params: Promise<{ journalId: string; entryId: string }>
 }
 
@@ -13,7 +16,13 @@ interface RawEntryTag {
   tags: { tag_id: string; tag_name: string; color: string } | null
 }
 
-export default async function EntryPage({ params }: EntryPageProps) {
+/**
+ * Editor route for an entry reached through its hidden parent journal.
+ * Requires the vault to be open and the parent journal to actually be
+ * is_hidden; the entry itself can be hidden or not. This gives a clean
+ * "Hidden > <journal> > <entry>" breadcrumb.
+ */
+export default async function HiddenJournalEntryPage({ params }: HiddenJournalEntryPageProps) {
   const { journalId, entryId } = await params
   const supabase = await createClient()
   const {
@@ -21,10 +30,8 @@ export default async function EntryPage({ params }: EntryPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // This is the "public" entry route. Hidden entries live exclusively under
-  // /hidden/** — this route always filters them out, and refuses to render
-  // inside a hidden journal. (See app/(app)/hidden/entries and
-  // app/(app)/hidden/journals/[journalId]/entries for the hidden mirrors.)
+  if (!(await isVaultOpen(user.id))) redirect('/hidden')
+
   const [
     { data: entry },
     { data: journal },
@@ -35,7 +42,7 @@ export default async function EntryPage({ params }: EntryPageProps) {
       .from('entries')
       .select('*')
       .eq('entry_id', entryId)
-      .eq('is_hidden', false)
+      .eq('journal_id', journalId)
       .is('deleted_at', null)
       .single(),
     supabase
@@ -43,7 +50,7 @@ export default async function EntryPage({ params }: EntryPageProps) {
       .select('journal_id, title, color, entry_lock_type')
       .eq('journal_id', journalId)
       .eq('user_id', user.id)
-      .eq('is_hidden', false)
+      .eq('is_hidden', true)
       .is('deleted_at', null)
       .single(),
     supabase

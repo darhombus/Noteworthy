@@ -3,47 +3,59 @@ import { createClient } from '@/lib/supabase/server'
 import EntryEditor from '@/components/entries/EntryEditor'
 import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import type { UserPreferences } from '@/lib/actions/settings'
 
-interface EntryPageProps {
-  params: Promise<{ journalId: string; entryId: string }>
+export const dynamic = 'force-dynamic'
+
+interface HiddenEntryPageProps {
+  params: Promise<{ entryId: string }>
 }
 
 interface RawEntryTag {
   tags: { tag_id: string; tag_name: string; color: string } | null
 }
 
-export default async function EntryPage({ params }: EntryPageProps) {
-  const { journalId, entryId } = await params
+/**
+ * Editor route for an individually-hidden entry, reached from the Entries
+ * tab of /hidden. The entry itself must be is_hidden; its parent journal
+ * can be anything. Breadcrumb is "Hidden > <entry>", with no leakage of
+ * the parent journal's name/structure.
+ *
+ * The entry row is fetched with a plain `.select('*')` (no inline
+ * `journals!inner(...)` join) so the shape EntryEditor receives is
+ * byte-identical to the rows served by the other editor routes. The
+ * cross-tab autosave echo filter compares `updated_at` strings literally,
+ * so we never want the entry row to come back reshaped by a join.
+ */
+export default async function HiddenEntryPage({ params }: HiddenEntryPageProps) {
+  const { entryId } = await params
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // This is the "public" entry route. Hidden entries live exclusively under
-  // /hidden/** — this route always filters them out, and refuses to render
-  // inside a hidden journal. (See app/(app)/hidden/entries and
-  // app/(app)/hidden/journals/[journalId]/entries for the hidden mirrors.)
-  const [
-    { data: entry },
-    { data: journal },
-    { data: rawEntryTags },
-    { data: profile },
-  ] = await Promise.all([
-    supabase
-      .from('entries')
-      .select('*')
-      .eq('entry_id', entryId)
-      .eq('is_hidden', false)
-      .is('deleted_at', null)
-      .single(),
+  if (!(await isVaultOpen(user.id))) redirect('/hidden')
+
+  // Step 1 — fetch the hidden entry. RLS already scopes to this user.
+  const { data: entry } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('entry_id', entryId)
+    .eq('is_hidden', true)
+    .is('deleted_at', null)
+    .single()
+
+  if (!entry) notFound()
+
+  // Step 2 — fetch the parent journal and the rest of the sidecar data.
+  const [{ data: journal }, { data: rawEntryTags }, { data: profile }] = await Promise.all([
     supabase
       .from('journals')
       .select('journal_id, title, color, entry_lock_type')
-      .eq('journal_id', journalId)
+      .eq('journal_id', entry.journal_id)
       .eq('user_id', user.id)
-      .eq('is_hidden', false)
       .is('deleted_at', null)
       .single(),
     supabase
@@ -57,7 +69,7 @@ export default async function EntryPage({ params }: EntryPageProps) {
       .single(),
   ])
 
-  if (!entry || !journal) notFound()
+  if (!journal) notFound()
 
   const preferences: UserPreferences =
     profile?.preferences && typeof profile.preferences === 'object' && !Array.isArray(profile.preferences)
@@ -71,7 +83,6 @@ export default async function EntryPage({ params }: EntryPageProps) {
 
   return (
     <>
-      <BreadcrumbTitle id={journal.journal_id} title={journal.title} />
       <BreadcrumbTitle id={entry.entry_id} title={entry.title?.trim() || 'Untitled'} />
       <LockGate
         lockType={entry.lock_type as 'none' | 'pin' | 'password'}

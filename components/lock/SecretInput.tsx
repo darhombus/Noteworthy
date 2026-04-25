@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
 interface SecretInputProps {
@@ -11,36 +11,69 @@ interface SecretInputProps {
   autoFocus?: boolean
   showPassword?: boolean
   onToggleShow?: () => void
+  /** Placeholder for the password field. Ignored for PIN. */
+  placeholder?: string
   /**
-   * Fires on Enter (password) or auto-submit when the 4th PIN digit lands.
-   * Receives the full value directly — callers must use this rather than
-   * the `value` prop, which is still stale at auto-submit time because the
-   * parent's `onChange` state update hasn't flushed yet.
+   * PIN only. When true (default), `onEnter` fires the moment the 4th digit
+   * is typed — useful for single-field unlock screens where the user expects
+   * to type 4 digits and be done. Set to `false` on chained fields (new +
+   * confirm) so Enter is the explicit advance trigger and a casual 4th digit
+   * doesn't unexpectedly submit or jump focus.
+   */
+  autoSubmitOnFull?: boolean
+  /**
+   * Fires on Enter (password) or — when `autoSubmitOnFull` is left on —
+   * when the 4th PIN digit lands. Receives the full value directly:
+   * callers must use this rather than the `value` prop, which is still
+   * stale at auto-submit time because the parent's `onChange` state
+   * update hasn't flushed yet.
    */
   onEnter?: (value: string) => void
+}
+
+export interface SecretInputHandle {
+  /** Focus the first input (PIN: digit 0; password: the field). */
+  focus: () => void
 }
 
 /**
  * Compact secret-input widget shared by flows that need the user to retype
  * an existing PIN or password (change-lock, remove-lock). Renders 4 digit
  * boxes for PIN or a single field for password.
+ *
+ * Forwarded ref exposes a `focus()` method so callers can chain inputs —
+ * e.g. moving from a "new PIN" field into a "confirm PIN" field after the
+ * 4th digit is entered.
  */
-export default function SecretInput({
-  lockType,
-  value,
-  onChange,
-  error,
-  autoFocus,
-  showPassword,
-  onToggleShow,
-  onEnter,
-}: SecretInputProps) {
+const SecretInput = forwardRef<SecretInputHandle, SecretInputProps>(function SecretInput(
+  {
+    lockType,
+    value,
+    onChange,
+    error,
+    autoFocus,
+    showPassword,
+    onToggleShow,
+    placeholder,
+    autoSubmitOnFull = true,
+    onEnter,
+  },
+  ref,
+) {
   const pinRefs = [
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
   ]
+  const passwordRef = useRef<HTMLInputElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (lockType === 'pin') pinRefs[0].current?.focus()
+      else passwordRef.current?.focus()
+    },
+  }))
 
   if (lockType === 'pin') {
     const digits: [string, string, string, string] = [
@@ -56,7 +89,7 @@ export default function SecretInput({
       next[index] = digit
       onChange(next.join(''))
       if (digit && index < 3) pinRefs[index + 1].current?.focus()
-      if (digit && index === 3 && onEnter) {
+      if (digit && index === 3 && onEnter && autoSubmitOnFull) {
         const full = next.join('')
         if (full.length === 4) onEnter(full)
       }
@@ -68,15 +101,24 @@ export default function SecretInput({
         next[index - 1] = ''
         onChange(next.join(''))
         pinRefs[index - 1].current?.focus()
+      } else if (e.key === 'Enter' && onEnter) {
+        // Only advance / submit once all four digits are in — prevents a
+        // stray Enter halfway through typing from skipping to the next
+        // field or firing a submit with an incomplete PIN.
+        const full = digits.join('')
+        if (full.length === 4) {
+          e.preventDefault()
+          onEnter(full)
+        }
       }
     }
 
     return (
       <div className="flex gap-2">
-        {pinRefs.map((ref, i) => (
+        {pinRefs.map((r, i) => (
           <input
             key={i}
-            ref={ref}
+            ref={r}
             type="password"
             inputMode="numeric"
             maxLength={1}
@@ -100,13 +142,14 @@ export default function SecretInput({
   return (
     <div className="relative">
       <input
+        ref={passwordRef}
         type={showPassword ? 'text' : 'password'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && onEnter) onEnter(value)
         }}
-        placeholder="Enter password…"
+        placeholder={placeholder ?? 'Enter password…'}
         autoFocus={autoFocus}
         autoComplete="current-password"
         className={`w-full px-3 py-2 pr-10 rounded-lg border-2 bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none transition-colors ${
@@ -127,4 +170,6 @@ export default function SecretInput({
       )}
     </div>
   )
-}
+})
+
+export default SecretInput
