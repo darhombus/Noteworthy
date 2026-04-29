@@ -10,6 +10,7 @@ import {
   Tag,
   Trash2,
   Settings,
+  Lock,
   X,
   LogOut,
 } from 'lucide-react'
@@ -32,9 +33,10 @@ const NAV_ITEMS = [
   { href: '/journals',    label: 'Journals',     Icon: BookOpen },
   { href: '/analytics',   label: 'Analytics',   Icon: BarChart2 },
   { href: '/tags',        label: 'Tags',         Icon: Tag },
+  { href: '/hidden',      label: 'Hidden',       Icon: Lock },
   { href: '/recycle-bin', label: 'Recycle Bin',  Icon: Trash2 },
   { href: '/settings',    label: 'Settings',     Icon: Settings },
-]
+] as const
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/)
@@ -110,23 +112,21 @@ export default function Sidebar({ user }: SidebarProps) {
 
       {/* Nav links */}
       <ul className="flex-1 px-3 pt-2 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, Icon }) => {
+        {NAV_ITEMS.map((item) => {
+          const { href, label, Icon } = item
           const isActive = pathname === href || pathname.startsWith(href + '/')
           return (
             <li key={href}>
               <Link
                 href={href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
+                className={`relative flex items-center gap-3 px-3 py-2.5 pr-8 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                   isActive
-                    ? 'bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
+                    ? 'sidebar-nav-active bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
                     : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]'
                 }`}
               >
                 <Icon size={17} className="flex-shrink-0" />
                 <span>{label}</span>
-                {isActive && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
-                )}
               </Link>
             </li>
           )
@@ -193,24 +193,22 @@ export default function Sidebar({ user }: SidebarProps) {
 
           {/* Nav links */}
           <ul className="flex-1 px-1.5 lg:px-3 pt-2 space-y-0.5">
-            {NAV_ITEMS.map(({ href, label, Icon }) => {
+            {NAV_ITEMS.map((item) => {
+              const { href, label, Icon } = item
               const isActive = pathname === href || pathname.startsWith(href + '/')
               return (
                 <li key={href}>
                   <Link
                     href={href}
                     title={label}
-                    className={`flex items-center gap-3 px-2 lg:px-3 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
+                    className={`relative flex items-center gap-3 px-2 lg:px-3 lg:pr-8 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                       isActive
-                        ? 'bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
+                        ? 'sidebar-nav-active bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
                         : 'text-gray-600 dark:text-[#BDBDBD] hover:bg-[#EEEEEE] dark:hover:bg-[#333333]'
                     }`}
                   >
                     <Icon size={17} className="flex-shrink-0" />
                     <span className="hidden lg:block">{label}</span>
-                    {isActive && (
-                      <div className="hidden lg:block ml-auto w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
-                    )}
                   </Link>
                 </li>
               )

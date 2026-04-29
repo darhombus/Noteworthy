@@ -3,10 +3,13 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Calendar, MoreHorizontal, Pin, Lock, LockOpen } from 'lucide-react'
+import { Calendar, MoreHorizontal, Pin, EyeOff, Eye } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { togglePin } from '@/lib/actions/entries'
+import { hideEntry, unhideEntry } from '@/lib/actions/vault'
+import { useSurface } from '@/lib/surface'
+import { entryHref } from '@/lib/utils/href'
 import type { Database } from '@/types/supabase'
 import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import TagChip from '@/components/ui/TagChip'
@@ -34,9 +37,12 @@ interface EntryCardProps {
   accentColor: string
   isLatest: boolean
   onDelete: (entry: Entry) => void
-  /** Opens the entry-lock management dialog for this entry. */
-  onLock: (entry: Entry) => void
   tags?: EntryTag[]
+  /** True if the parent journal is hidden — only meaningful in the
+   *  hidden surface, where it switches the entry URL between the
+   *  nested `/hidden/<jid>/<eid>` and standalone `/hidden/entry/<eid>`
+   *  forms. Ignored on the public surface. */
+  parentJournalIsHidden?: boolean
 }
 
 export default function EntryCard({
@@ -45,10 +51,11 @@ export default function EntryCard({
   accentColor,
   isLatest,
   onDelete,
-  onLock,
   tags = [],
+  parentJournalIsHidden = true,
 }: EntryCardProps) {
   const router = useRouter()
+  const surface = useSurface()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isPinned, setIsPinned] = useState(entry.is_pinned)
@@ -90,6 +97,45 @@ export default function EntryCard({
     } else {
       router.refresh()
     }
+  }
+
+  async function handleHideToggle() {
+    if (surface === 'hidden') {
+      const result = await unhideEntry(entry.entry_id)
+      if ('error' in result) {
+        if (result.error === 'vault_locked') {
+          toast.error('Vault is locked — unlock to unhide entries')
+        } else {
+          toast.error(result.error)
+        }
+        return
+      }
+      toast.success('Entry unhidden')
+      router.refresh()
+      return
+    }
+
+    const result = await hideEntry(entry.entry_id)
+    if ('error' in result) {
+      if (result.error.startsWith('no_vault')) {
+        toast.error('Set up your vault first', {
+          action: {
+            label: 'Set up',
+            onClick: () => router.push('/hidden'),
+          },
+          actionButtonStyle: {
+            background: '#1976D2',
+            color: '#FFFFFF',
+            fontWeight: 600,
+          },
+        })
+      } else {
+        toast.error(result.error)
+      }
+      return
+    }
+    toast.success('Entry hidden')
+    router.refresh()
   }
 
   function handleMenuToggle(e: React.MouseEvent) {
@@ -150,7 +196,13 @@ export default function EntryCard({
   return (
     <div
       className={`relative flex items-stretch bg-[var(--bg-surface)] rounded-xl overflow-hidden cursor-pointer border border-[var(--border)] transition-transform ${menuOpen ? '' : 'hover:translate-x-0.5'}`}
-      onClick={() => router.push(`/journals/${journalId}/entries/${entry.entry_id}`)}
+      onClick={() =>
+        router.push(
+          entryHref(surface, journalId, entry.entry_id, {
+            standalone: surface === 'hidden' && !parentJournalIsHidden,
+          }),
+        )
+      }
     >
       {/* Accent left bar */}
       <div
@@ -216,10 +268,7 @@ export default function EntryCard({
             WebkitBoxOrient: 'vertical',
           }}
         >
-          {entry.lock_type !== 'none'
-            ? <span className="italic text-[var(--text-muted)]">Content hidden — entry is locked</span>
-            : previewSnippet && <span>{previewSnippet}</span>
-          }
+          {previewSnippet && <span>{previewSnippet}</span>}
         </div>
 
         {/* Row 4: tags */}
@@ -259,13 +308,13 @@ export default function EntryCard({
             {isPinned ? 'Unpin' : 'Pin'}
           </button>
           <button
-            onClick={() => { setMenuOpen(false); onLock(entry) }}
+            onClick={() => { setMenuOpen(false); handleHideToggle() }}
             className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
-            {entry.lock_type !== 'none'
-              ? <Lock size={13} className="text-[#1976D2]" />
-              : <LockOpen size={13} className="text-[#9E9E9E]" />}
-            {entry.lock_type !== 'none' ? 'Change lock' : 'Lock entry'}
+            {surface === 'hidden'
+              ? <Eye size={13} className="text-[#9E9E9E]" />
+              : <EyeOff size={13} className="text-[#9E9E9E]" />}
+            {surface === 'hidden' ? 'Unhide' : 'Hide'}
           </button>
           <button
             onClick={() => { setMenuOpen(false); onDelete(entry) }}

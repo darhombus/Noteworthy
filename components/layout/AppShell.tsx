@@ -2,6 +2,8 @@ import Sidebar, { type SidebarUser } from './Sidebar'
 import TopBar from './TopBar'
 import InactivityModal from './InactivityModal'
 import SearchOverlay from './SearchOverlay'
+import VaultAutoLock from '@/components/privacy/VaultAutoLock'
+import { SurfaceFromPath } from '@/lib/surface'
 
 interface AppShellProps {
   user: SidebarUser
@@ -26,7 +28,13 @@ export default function AppShell({ user, children }: AppShellProps) {
       </div>
 
       <InactivityModal />
-      <SearchOverlay />
+      {/* SearchOverlay lives globally (above the route-group layouts that
+          set Surface), so wrap it in a pathname-derived provider so it can
+          read useSurface() instead of sniffing pathname itself. */}
+      <SurfaceFromPath>
+        <SearchOverlay />
+      </SurfaceFromPath>
+      <VaultAutoLock />
     </div>
   )
 }

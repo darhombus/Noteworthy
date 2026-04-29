@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X } from 'lucide-react'
 import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createEntry } from '@/lib/actions/entries'
-import { getColorBg } from '@/lib/validations/journals'
+import { useSurface } from '@/lib/surface'
+import { entryHref } from '@/lib/utils/href'
 
 /** Convert a 6-digit hex color + 2-char hex opacity to rgba() to avoid
  *  browser normalisation causing SSR/client hydration mismatches. */
@@ -18,11 +19,8 @@ function hexAlpha(hex: string, alpha: string): string {
   return `rgba(${r}, ${g}, ${b}, ${(parseInt(alpha, 16) / 255).toFixed(3)})`
 }
 import BookIcon from '@/components/ui/BookIcon'
-import { useDebounce } from '@/hooks/useDebounce'
 import EntryCard from './EntryCard'
 import DeleteEntryModal from './DeleteEntryModal'
-import EntryLockModal from './EntryLockModal'
-import Spinner from '@/components/ui/Spinner'
 import type { Database } from '@/types/supabase'
 
 type EntryBase = Database['public']['Tables']['entries']['Row']
@@ -41,23 +39,14 @@ interface EntryListProps {
   entries: Entry[]
 }
 
-interface Tag {
-  tag_id: string
-  tag_name: string
-  color: string
-}
-
 interface SearchResult {
-  entry_id: string
-  title: string | null
-  journal_id: string
-  journal_title: string
-  journal_color: string
-  entry_date: string
-  word_count: number
-  is_pinned: boolean
+  entry: Entry
+  /** Lower-cased haystack used to find/match the query — derived from the
+   *  entry's `search_text` (or title fallback). Snippet centring uses
+   *  this same string so highlights line up exactly. */
+  haystack: string
   snippet: string
-  matched_terms: string[]
+  matchedTerms: string[]
 }
 
 // Highlight text using String.indexOf — no regex with user input
@@ -152,39 +141,51 @@ function removeHashTag(query: string, tagName: string): string {
     .trim()
 }
 
+/** Cut a snippet centred on the first match, with ellipses when we're not
+ *  at the boundaries. Mirrors the server's `LEFT(search_text, 200)` shape
+ *  when no match is found, so the highlight component still has something
+ *  to render for tag/date-only filtering. */
+function buildSnippet(haystack: string, queryLower: string): string {
+  if (!haystack) return ''
+  const SNIPPET_LEN = 200
+  if (haystack.length <= SNIPPET_LEN) return haystack
+  if (!queryLower) return haystack.slice(0, SNIPPET_LEN)
+
+  const idx = haystack.toLowerCase().indexOf(queryLower)
+  if (idx === -1) return haystack.slice(0, SNIPPET_LEN)
+
+  const lead = 50
+  const start = Math.max(0, idx - lead)
+  const end = Math.min(haystack.length, start + SNIPPET_LEN)
+  let snippet = haystack.slice(start, end)
+  if (start > 0) snippet = '…' + snippet
+  if (end < haystack.length) snippet = snippet + '…'
+  return snippet
+}
+
 export default function EntryList({ journal, entries }: EntryListProps) {
   const router = useRouter()
+  const surface = useSurface()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null)
-  const [lockTarget, setLockTarget] = useState<Entry | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
-  // Search state
+  // Search state — fully client-side. Every entry on this page already
+  // arrived from the server with `search_text` (the materialized
+  // generated column from migration 020) prefilled, so filtering is just
+  // an in-memory string scan. No fetch, no debounce, no spinner.
   const [searchQuery, setSearchQuery] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [pinnedOnly, setPinnedOnly] = useState(false)
-
-  // Tags loaded for name→ID lookup (used when resolving #tagname tokens)
-  const [tags, setTags] = useState<Tag[]>([])
-  const tagsLoadedRef = useRef(false)
-
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchFetched, setSearchFetched] = useState(false)
   const [queryTooLong, setQueryTooLong] = useState(false)
-
-  const debouncedQuery = useDebounce(searchQuery, 150)
-  const abortRef = useRef<AbortController | null>(null)
 
   const accent = journal.color ?? '#1976D2'
 
-  // Load tags once for name→ID resolution
   useEffect(() => { setMounted(true) }, [])
 
   const isDark = mounted && resolvedTheme === 'dark'
-  const emojiBg = isDark ? hexAlpha(accent, '25') : getColorBg(accent)
 
   const lastUpdated = new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -192,122 +193,90 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     year: 'numeric',
   }).format(new Date(journal.updated_at))
 
+  // Pre-compute, for every entry, the lower-cased match haystack (title
+  // + plain Tiptap text from the generated search_text column) AND the
+  // body-only preview text used for the snippet. Splitting them means
+  // searches still match against the title, but the snippet rendered
+  // back to the user mirrors the regular EntryCard preview — body text
+  // only, never duplicating the heading shown directly above it.
+  const entryHaystacks = useMemo(() => {
+    const map = new Map<string, { match: string; body: string }>()
+    for (const e of entries) {
+      const match = (e.search_text ?? `${e.title ?? ''}`).toLowerCase()
+      // search_text is `coalesce(title,'') || ' ' || extract_tiptap_text(content)`.
+      // Strip exactly that prefix so the snippet contains body text only.
+      const titlePrefix = `${e.title ?? ''} `
+      const raw = e.search_text ?? ''
+      const body = raw.startsWith(titlePrefix) ? raw.slice(titlePrefix.length) : raw
+      map.set(e.entry_id, { match, body })
+    }
+    return map
+  }, [entries])
+
+  // Derive text and tag patterns from the live query — debouncing isn't
+  // needed when filtering happens locally with no network in play.
+  const { text: queryText, tagNames: liveTagNames } = parseHashTags(searchQuery)
+  const queryLower = queryText.trim().toLowerCase()
+  const isTextSearchActive = queryLower.length > 0
+  const isTagFilterActive = liveTagNames.length > 0
+
   useEffect(() => {
-    if (tagsLoadedRef.current) return
-    tagsLoadedRef.current = true
-    fetch('/api/tags')
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: Tag[]) => setTags(data))
-      .catch(() => {/* graceful degradation — #tag filters won't resolve */})
-  }, [])
+    if (queryText.length > 200) {
+      setQueryTooLong(true)
+    } else if (queryTooLong) {
+      setQueryTooLong(false)
+    }
+  }, [queryText, queryTooLong])
 
-  // Derive text query and tag names from the debounced input
-  const { text: debouncedText, tagNames: debouncedTagNames } = parseHashTags(debouncedQuery)
-  // Also derive from the live (non-debounced) query for chip display
-  const { tagNames: liveTagNames } = parseHashTags(searchQuery)
-
-  // Tag IDs resolved from parsed #tagname patterns using partial (contains) matching
-  // so that typing #wo live-matches tags like "work", "writing", etc.
-  const parsedTagIds = tags
-    .filter((t) => debouncedTagNames.some((p) => t.tag_name.includes(p)))
-    .map((t) => t.tag_id)
-
-  // Tag-only mode: no text query but the user has typed at least one #pattern
-  const isTagFilterActive = debouncedTagNames.length > 0 && debouncedText.trim().length === 0
-
-  // Client-side filtered entries — applies tag, date, and pinned filters.
-  const tagFilteredEntries = (() => {
+  // Apply tag/date/pinned filters first — these are reused by both modes.
+  const filteredEntries = useMemo(() => {
     let result = entries
 
-    // Tag filter (partial name match)
     if (isTagFilterActive) {
-      result = parsedTagIds.length > 0
-        ? result.filter((e) => parsedTagIds.some((tid) => e.tags?.some((t) => t.tag_id === tid)))
-        : []
+      result = result.filter((e) =>
+        liveTagNames.some((pattern) =>
+          (e.tags ?? []).some((t) => t.tag_name.toLowerCase().includes(pattern)),
+        ),
+      )
     }
-
-    // Pinned only
-    if (pinnedOnly) {
-      result = result.filter((e) => e.is_pinned)
-    }
-
-    // Date range — entry_date is 'YYYY-MM-DD', string comparison is safe
-    if (fromDate) {
-      result = result.filter((e) => e.entry_date >= fromDate)
-    }
-    if (toDate) {
-      result = result.filter((e) => e.entry_date <= toDate)
-    }
+    if (pinnedOnly) result = result.filter((e) => e.is_pinned)
+    if (fromDate)   result = result.filter((e) => e.entry_date >= fromDate)
+    if (toDate)     result = result.filter((e) => e.entry_date <= toDate)
 
     return result
-  })()
+  // liveTagNames is a fresh array each render — depend on its serialised form
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, isTagFilterActive, liveTagNames.join(','), pinnedOnly, fromDate, toDate])
 
-  // Run search when debounced query or filters change
-  useEffect(() => {
-    if (debouncedText.length === 0) {
-      setSearchResults([])
-      setSearchFetched(false)
-      setQueryTooLong(false)
-      return
+  // Client-side text-search results. Splits the query into words so a
+  // multi-word query "lov morn" matches "loving morning" without needing
+  // them adjacent. Cap at 50 results so a no-op query against a huge
+  // journal doesn't pay rendering cost it doesn't need.
+  const searchResults: SearchResult[] = useMemo(() => {
+    if (!isTextSearchActive || queryTooLong) return []
+    const words = queryLower.split(/\s+/).filter(Boolean)
+    const out: SearchResult[] = []
+    for (const e of filteredEntries) {
+      const indexed = entryHaystacks.get(e.entry_id)
+      if (!indexed) continue
+      // require every word to appear somewhere in the match haystack
+      // (title + body) so title-only matches still surface.
+      if (!words.every((w) => indexed.match.includes(w))) continue
+      // Snippet centres on the first body match. If the only match is in
+      // the title, fall back to the body's leading slice rather than the
+      // title text — the title is already shown above the snippet.
+      const snippet = buildSnippet(indexed.body, words[0] ?? '')
+      out.push({ entry: e, haystack: indexed.match, snippet, matchedTerms: words })
+      if (out.length >= 50) break
     }
-    if (debouncedText.length > 200) {
-      setQueryTooLong(true)
-      return
-    }
-    setQueryTooLong(false)
-    const tagIds = tags
-      .filter((t) => debouncedTagNames.some((p) => t.tag_name.includes(p)))
-      .map((t) => t.tag_id)
-    runSearch(debouncedText, tagIds)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, fromDate, toDate, pinnedOnly])
-
-  async function runSearch(q: string, tagIds: string[] = []) {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setIsSearching(true)
-    try {
-      const url = new URL('/api/search', window.location.origin)
-      url.searchParams.set('q', q)
-      url.searchParams.set('journalId', journal.journal_id)
-      if (fromDate) url.searchParams.set('from', fromDate)
-      if (toDate) url.searchParams.set('to', toDate)
-      if (pinnedOnly) url.searchParams.set('pinned', 'true')
-      if (tagIds.length > 0) url.searchParams.set('tagIds', tagIds.join(','))
-
-      const res = await fetch(url.toString(), { signal: controller.signal })
-
-      if (res.status === 401) {
-        router.push('/login')
-        return
-      }
-      if (!res.ok) {
-        toast.error('Search is temporarily unavailable. Please try again.')
-        console.error('Search error:', res.status)
-        return
-      }
-
-      const data = (await res.json()) as { entries?: SearchResult[] }
-      setSearchResults(Array.isArray(data.entries) ? data.entries : [])
-      setSearchFetched(true)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      toast.error('Search is temporarily unavailable. Please try again.')
-      console.error('Search failed:', err)
-    } finally {
-      if (!controller.signal.aborted) setIsSearching(false)
-    }
-  }
+    return out
+  }, [filteredEntries, entryHaystacks, queryLower, isTextSearchActive, queryTooLong])
 
   function clearAllFilters() {
     setSearchQuery('')
     setFromDate('')
     setToDate('')
     setPinnedOnly(false)
-    setSearchResults([])
-    setSearchFetched(false)
   }
 
   function setDatePreset(preset: 'today' | 'week' | 'month' | 'year') {
@@ -355,14 +324,15 @@ export default function EntryList({ journal, entries }: EntryListProps) {
       return
     }
 
-    router.push(`/journals/${journal.journal_id}/entries/${result.entry_id}`)
+    router.push(entryHref(surface, journal.journal_id, result.entry_id, {
+      standalone: surface === 'hidden' && !journal.is_hidden,
+    }))
   }
 
-  const isTextSearchActive = debouncedText.trim().length > 0
   const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly)
   const hasActiveFilters = hasDatePinFilters || liveTagNames.length > 0
   const isAnyClientFilterActive = isTagFilterActive || hasDatePinFilters
-  const showSearchEmpty = searchFetched && searchResults.length === 0 && !isSearching
+  const showSearchEmpty = isTextSearchActive && searchResults.length === 0 && !queryTooLong
 
   return (
     <div className="p-6 max-w-[800px] mx-auto">
@@ -442,17 +412,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value)
-              if (e.target.value.length <= 200) setQueryTooLong(false)
-              const { text } = parseHashTags(e.target.value)
-              if (text.length === 0) {
-                abortRef.current?.abort()
-                setSearchResults([])
-                setSearchFetched(false)
-                setIsSearching(false)
-              }
-            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search entries… use #tagname to filter by tag"
             className="flex-1 text-sm bg-transparent text-[var(--text-primary)] placeholder-[#9E9E9E] focus:outline-none"
           />
@@ -572,13 +532,10 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             >
               Search Results
             </h2>
+            <span className="text-xs text-[var(--text-muted)]">
+              {searchResults.length} {searchResults.length === 1 ? 'match' : 'matches'}
+            </span>
           </div>
-
-          {isSearching && (
-            <div className="flex justify-center py-12">
-              <Spinner size={24} />
-            </div>
-          )}
 
           {showSearchEmpty && (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
@@ -595,32 +552,38 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             </div>
           )}
 
-          {!isSearching && searchResults.length > 0 && (
+          {searchResults.length > 0 && (
             <div className="flex flex-col gap-3">
               {searchResults.map((result) => (
                 <button
-                  key={result.entry_id}
+                  key={result.entry.entry_id}
                   onClick={() =>
-                    router.push(`/journals/${result.journal_id}/entries/${result.entry_id}`)
+                    router.push(
+                      entryHref(surface, journal.journal_id, result.entry.entry_id, {
+                        // Search results within EntryList are always scoped to
+                        // the current journal — share the parent's hidden flag.
+                        standalone: surface === 'hidden' && !journal.is_hidden,
+                      }),
+                    )
                   }
                   className="w-full text-left bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors"
                 >
                   {/* Title */}
                   <p className="font-medium text-[15px] text-[var(--text-primary)] truncate">
-                    {result.title ?? <em>Untitled</em>}
+                    {result.entry.title ?? <em>Untitled</em>}
                   </p>
 
                   {/* Date + word count */}
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    {format(parseISO(result.entry_date), 'd MMM yyyy')}
+                    {format(parseISO(result.entry.entry_date), 'd MMM yyyy')}
                     {' · '}
-                    {result.word_count} words
+                    {result.entry.word_count} words
                   </p>
 
                   {/* Snippet */}
                   {result.snippet && (
                     <p className="text-[13px] text-[var(--text-secondary)] mt-1.5 leading-relaxed line-clamp-2">
-                      <HighlightedText text={result.snippet} terms={result.matched_terms} />
+                      <HighlightedText text={result.snippet} terms={result.matchedTerms} />
                     </p>
                   )}
                 </button>
@@ -641,11 +604,11 @@ export default function EntryList({ journal, entries }: EntryListProps) {
               {isAnyClientFilterActive ? 'Filtered Entries' : 'All Entries'}
             </h2>
             <span className="text-xs text-[var(--text-muted)]">
-              {tagFilteredEntries.length} {tagFilteredEntries.length === 1 ? 'entry' : 'entries'}
+              {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
             </span>
           </div>
 
-          {tagFilteredEntries.length === 0 ? (
+          {filteredEntries.length === 0 ? (
             isAnyClientFilterActive ? (
               <div className="flex flex-col items-center gap-3 py-16 text-center">
                 <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A]" />
@@ -682,12 +645,12 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           ) : (
             <div className="flex flex-col gap-3">
               {(() => {
-                const latestEntry = tagFilteredEntries.reduce<typeof tagFilteredEntries[0] | null>((a, b) => {
+                const latestEntry = filteredEntries.reduce<typeof filteredEntries[0] | null>((a, b) => {
                   if (!a) return b
                   if (a.entry_date !== b.entry_date) return a.entry_date > b.entry_date ? a : b
                   return new Date(a.created_at).getTime() >= new Date(b.created_at).getTime() ? a : b
                 }, null)
-                return tagFilteredEntries.map((entry) => (
+                return filteredEntries.map((entry) => (
                   <EntryCard
                     key={entry.entry_id}
                     entry={entry}
@@ -695,8 +658,8 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                     accentColor={accent}
                     isLatest={entry.entry_id === latestEntry?.entry_id}
                     onDelete={setDeleteTarget}
-                    onLock={setLockTarget}
                     tags={entry.tags}
+                    parentJournalIsHidden={journal.is_hidden}
                   />
                 ))
               })()}
@@ -709,20 +672,8 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         <DeleteEntryModal
           entryId={deleteTarget.entry_id}
           journalId={journal.journal_id}
-          lockType={(deleteTarget.lock_type as 'none' | 'pin' | 'password') ?? 'none'}
+          parentJournalIsHidden={journal.is_hidden}
           onClose={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {lockTarget && (
-        <EntryLockModal
-          entryId={lockTarget.entry_id}
-          journalId={journal.journal_id}
-          entryLockType={(lockTarget.lock_type as 'none' | 'pin' | 'password') ?? 'none'}
-          journalEntryLockType={
-            (journal.entry_lock_type as 'none' | 'pin' | 'password') ?? 'none'
-          }
-          onClose={() => setLockTarget(null)}
         />
       )}
     </div>

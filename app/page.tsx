@@ -4,13 +4,12 @@ import ThemeToggle from '@/components/layout/ThemeToggle'
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
-      <header className="flex justify-end p-4">
+    <main className="h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 overflow-hidden">
+      <div className="absolute top-4 right-4">
         <ThemeToggle />
-      </header>
+      </div>
 
-      <div className="flex-1 flex items-center justify-center px-4">
-        <div className="flex flex-col items-center text-center max-w-sm w-full">
+      <div className="flex flex-col items-center text-center max-w-sm w-full">
 
           {/* Logo */}
           <div className="w-20 h-20 rounded-2xl bg-[#1976D2] flex items-center justify-center mb-4 shadow-xl shadow-[#1976D2]/25">
@@ -43,7 +42,6 @@ export default function LandingPage() {
             </Link>
           </div>
 
-        </div>
       </div>
     </main>
   )

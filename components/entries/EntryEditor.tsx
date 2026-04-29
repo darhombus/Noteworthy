@@ -2,8 +2,10 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, MoreHorizontal, Eye, Pencil, Calendar } from 'lucide-react'
 import { EditorContent } from '@tiptap/react'
+import { useSurface } from '@/lib/surface'
+import { journalHref, journalListHref } from '@/lib/utils/href'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import { useEntryRealtime } from '@/hooks/useEntryRealtime'
@@ -12,6 +14,7 @@ import ConflictDialog from './ConflictDialog'
 import DeleteEntryModal from './DeleteEntryModal'
 import ExportModal from '@/components/ExportModal'
 import TagInput from './TagInput'
+import TagChip from '@/components/ui/TagChip'
 import DatePicker from './DatePicker'
 import EditorToolbar from '@/components/editor/EditorToolbar'
 import ImageUploadModal from '@/components/editor/ImageUploadModal'
@@ -20,14 +23,13 @@ import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import type { LockType } from '@/components/lock/EntryLockPanel'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
 type Entry = Database['public']['Tables']['entries']['Row']
 type JournalMeta = Pick<
   Database['public']['Tables']['journals']['Row'],
-  'journal_id' | 'title' | 'color'
+  'journal_id' | 'title' | 'color' | 'is_hidden'
 >
 
 interface EntryTag {
@@ -44,6 +46,7 @@ interface EntryEditorProps {
 
 export default function EntryEditor({ entry, journal, initialTags }: EntryEditorProps) {
   const router = useRouter()
+  const surface = useSurface()
 
   // Read the stored doc once. `isTiptapDoc` mirrors the DB CHECK constraint,
   // so anything that somehow slipped through falls back to an empty doc.
@@ -54,16 +57,13 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [title, setTitle] = useState(entry.title ?? '')
   const [content, setContent] = useState<TiptapDoc>(initialContent)
   const [entryDate, setEntryDate] = useState(entry.entry_date)
+  const [isReadOnly, setIsReadOnly] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  // Entry lock state — kept here only so DeleteEntryModal gets the right
-  // lockType. Managing the lock itself now happens from the entry card's
-  // overflow menu, not inside the editor.
-  const entryLockType: LockType = (entry.lock_type as LockType | undefined) ?? 'none'
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -74,6 +74,19 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     const day = String(d.getDate()).padStart(2, '0')
     return `${y}-${m}-${day}`
   }, [])
+
+  // Human-readable entry date for the read-only view. Same format as
+  // DatePicker so toggling modes doesn't jar the eye.
+  const formattedEntryDate = useMemo(() => {
+    const [y, m, d] = entryDate.split('-').map(Number)
+    const dt = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1)
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getDay()]
+    const month = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ][dt.getMonth()]
+    return `${weekday}, ${month} ${dt.getDate()}, ${dt.getFullYear()}`
+  }, [entryDate])
 
   // Close the overflow menu when clicking outside or pressing Escape.
   useEffect(() => {
@@ -117,6 +130,14 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     initialContent,
     onChange: handleContentChange,
   })
+
+  // Flip Tiptap's editable flag whenever the user toggles read mode. The
+  // editor is created with `editable: true` by default, so we only need to
+  // push updates — `setEditable` no-ops when the value matches.
+  useEffect(() => {
+    if (!editor) return
+    editor.setEditable(!isReadOnly)
+  }, [editor, isReadOnly])
 
   const {
     saveStatus,
@@ -233,7 +254,15 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     if (saveStatus === 'pending') {
       await saveNow()
     }
-    router.push(`/journals/${journal.journal_id}`)
+    // From a hidden-journal entry (parent is_hidden) → back to the journal
+    // page. From a standalone hidden entry (parent is public) → back to the
+    // /hidden dashboard, since the user reached the editor through the
+    // dashboard rather than the journal list.
+    if (surface === 'hidden' && !journal.is_hidden) {
+      router.push(journalListHref('hidden'))
+      return
+    }
+    router.push(journalHref(surface, journal.journal_id))
   }
 
   async function handleDiscard() {
@@ -277,6 +306,16 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         </span>
 
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => setIsReadOnly((prev) => !prev)}
+            className="p-1.5 rounded hover:bg-[var(--bg-muted)] transition-colors text-[var(--text-secondary)]"
+            aria-label={isReadOnly ? 'Switch to edit mode' : 'Switch to read-only mode'}
+            aria-pressed={isReadOnly}
+            title={isReadOnly ? 'Switch to edit mode' : 'Read-only mode'}
+          >
+            {isReadOnly ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
@@ -314,27 +353,52 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
       </div>
 
       {/* Entry metadata — title, date, tags. Scrolls away with the page so
-          the toolbar can pin directly above the writing surface. */}
+          the toolbar can pin directly above the writing surface. In read-only
+          mode every interactive control is swapped for a static display so
+          the user can't accidentally mutate anything. */}
       <div className="pt-4 space-y-4">
         {/* Title */}
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={300}
-          placeholder="Entry title…"
-          className="w-full text-2xl font-semibold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-transparent transition-colors"
-        />
+        {isReadOnly ? (
+          <h1 className="w-full text-2xl font-semibold text-[var(--text-primary)] px-4 py-2.5">
+            {title || 'Untitled'}
+          </h1>
+        ) : (
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            maxLength={300}
+            placeholder="Entry title…"
+            className="w-full text-2xl font-semibold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-[var(--brand)] focus:border-transparent transition-colors"
+          />
+        )}
 
         {/* Date */}
         <div>
-          <DatePicker value={entryDate} onChange={setEntryDate} max={todayIso} />
+          {isReadOnly ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-primary)]">
+              <Calendar className="w-4 h-4 text-[var(--text-secondary)]" />
+              <span>{formattedEntryDate}</span>
+            </div>
+          ) : (
+            <DatePicker value={entryDate} onChange={setEntryDate} max={todayIso} />
+          )}
         </div>
 
         {/* Tags */}
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-3 py-2">
-          <TagInput entryId={entry.entry_id} initialTags={initialTags} />
-        </div>
+        {isReadOnly ? (
+          initialTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {initialTags.map((tag) => (
+                <TagChip key={tag.tag_id} tagName={tag.tag_name} color={tag.color} />
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg px-3 py-2">
+            <TagInput entryId={entry.entry_id} initialTags={initialTags} />
+          </div>
+        )}
 
       </div>
 
@@ -342,7 +406,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
           formatting controls stay reachable while writing. The save status
           rides along above it so the user can always see the current save
           state on long entries. */}
-      {editor && (
+      {editor && !isReadOnly && (
         <div className="sticky top-0 z-20 bg-[var(--bg-page)] pt-4 pb-2 mt-4">
           <div className="flex justify-end h-5 mb-1">
             <SaveStatus status={saveStatus} onSaveNow={saveNow} />
@@ -355,8 +419,9 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         </div>
       )}
 
-      {/* Rich-text body editor */}
-      <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg p-4">
+      {/* Rich-text body editor. In read-only mode the sticky toolbar is
+          hidden, so reintroduce the top margin it used to provide. */}
+      <div className={`bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-lg p-4 ${isReadOnly ? 'mt-4' : ''}`}>
         {editor ? (
           <EditorContent editor={editor} />
         ) : (
@@ -421,7 +486,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         <DeleteEntryModal
           entryId={entry.entry_id}
           journalId={journal.journal_id}
-          lockType={entryLockType}
+          parentJournalIsHidden={journal.is_hidden}
           onClose={() => setShowDeleteModal(false)}
         />
       )}

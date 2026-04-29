@@ -48,32 +48,58 @@ export default async function AnalyticsPage() {
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
   const oneYearAgoStr = localDateStr(oneYearAgo)
 
+  // Pre-fetch hidden journal ids — entry queries below filter both
+  // entries.is_hidden and entries.journal_id NOT IN (hidden journals)
+  // so analytics never expose private items.
+  const { data: hiddenJournalRows } = await supabase
+    .from('journals')
+    .select('journal_id')
+    .eq('user_id', user.id)
+    .eq('is_hidden', true)
+  const hiddenJournalIdList = `(${(hiddenJournalRows ?? [])
+    .map((r) => r.journal_id)
+    .join(',')})`
+  const hasHiddenJournals = (hiddenJournalRows ?? []).length > 0
+
+  const totalQuery = supabase
+    .from('entries')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+
+  const entryDataQuery = supabase
+    .from('entries')
+    .select('entry_date, created_at')
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+    .gte('entry_date', oneYearAgoStr)
+    .order('entry_date', { ascending: false })
+
+  const wordQuery = supabase
+    .from('entries')
+    .select('word_count')
+    .eq('is_hidden', false)
+    .is('deleted_at', null)
+
   const [totalResult, entryDataResult, wordResult, journalsResult, tagsResult] =
     await Promise.all([
-      // All-time entry count
-      supabase
-        .from('entries')
-        .select('*', { count: 'exact', head: true })
-        .is('deleted_at', null),
+      hasHiddenJournals
+        ? totalQuery.not('journal_id', 'in', hiddenJournalIdList)
+        : totalQuery,
 
-      // Entry dates + timestamps — last 365 days (charts, heatmap, time patterns)
-      supabase
-        .from('entries')
-        .select('entry_date, created_at')
-        .is('deleted_at', null)
-        .gte('entry_date', oneYearAgoStr)
-        .order('entry_date', { ascending: false }),
+      hasHiddenJournals
+        ? entryDataQuery.not('journal_id', 'in', hiddenJournalIdList)
+        : entryDataQuery,
 
-      // All-time word counts for average calculation
-      supabase
-        .from('entries')
-        .select('word_count')
-        .is('deleted_at', null),
+      hasHiddenJournals
+        ? wordQuery.not('journal_id', 'in', hiddenJournalIdList)
+        : wordQuery,
 
-      // Journals with pre-computed entry counts
+      // Hidden journals are excluded outright from "Entries by journal".
       supabase
         .from('journals')
         .select('title, color, entry_count')
+        .eq('is_hidden', false)
         .is('deleted_at', null)
         .gt('entry_count', 0)
         .order('entry_count', { ascending: false }),

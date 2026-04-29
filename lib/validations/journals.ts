@@ -28,12 +28,6 @@ export function getColorLabel(color: string): string {
   return def?.label ?? 'Blue'
 }
 
-export const LOCK_TYPES = ['none', 'pin', 'password'] as const
-export type LockType = (typeof LOCK_TYPES)[number]
-
-// NOTE: lock_type / lock_hash are intentionally NOT in these schemas.
-// Lock state is managed exclusively by `setLock` in lib/actions/lock.ts so
-// that journal data updates can never silently overwrite lock fields.
 export const createJournalSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title must be 200 characters or less'),
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),

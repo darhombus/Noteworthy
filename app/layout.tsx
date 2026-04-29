@@ -16,6 +16,7 @@ import {
 } from 'next/font/google'
 import { Toaster } from 'sonner'
 import Providers from '@/components/Providers'
+import ToastDismissOnOutsideClick from '@/components/ToastDismissOnOutsideClick'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -99,6 +100,7 @@ export default function RootLayout({
         <Providers>
           {children}
           <Toaster richColors position="top-right" />
+          <ToastDismissOnOutsideClick />
         </Providers>
       </body>
     </html>

@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { publicScope } from '@/lib/data/scope'
 import type { Database } from '@/types/supabase'
 
 type Json = Database['public']['Tables']['entries']['Insert']['content']
@@ -15,6 +16,13 @@ export default async function NewEntryPage({ params }: NewEntryPageProps) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  // Verify the parent journal is reachable on the public surface — that is,
+  // owned by the user, not deleted, and not hidden. Hidden journals have
+  // their own /hidden/<jid> shell and shouldn't accept new public entries.
+  const scope = await publicScope(user.id)
+  const journal = await scope.journals.byId(journalId)
+  if (!journal) notFound()
 
   const today = new Date().toISOString().split('T')[0]
 

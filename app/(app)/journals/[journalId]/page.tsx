@@ -1,16 +1,16 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { publicScope } from '@/lib/data/scope'
 import EntryList from '@/components/entries/EntryList'
 import LiveDataRefresh from '@/components/LiveDataRefresh'
-import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
-import type { UserPreferences } from '@/lib/actions/settings'
 
 interface JournalPageProps {
   params: Promise<{ journalId: string }>
 }
 
 interface RawEntryTag {
+  entry_id: string
   tags: { tag_id: string; tag_name: string; color: string } | null
 }
 
@@ -22,58 +22,35 @@ export default async function JournalPage({ params }: JournalPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: journal }, { data: rawEntries }, { data: profile }] = await Promise.all([
-    supabase
-      .from('journals')
-      .select('*')
-      .eq('journal_id', journalId)
-      .eq('user_id', user.id)
-      .is('deleted_at', null)
-      .single(),
-    supabase
-      .from('entries')
-      .select('*, entry_tags(tags(tag_id, tag_name, color))')
-      .eq('journal_id', journalId)
-      .is('deleted_at', null)
-      .order('is_pinned', { ascending: false })
-      .order('entry_date', { ascending: false }),
-    supabase
-      .from('profiles')
-      .select('preferences')
-      .eq('user_id', user.id)
-      .single(),
-  ])
-
+  // Public route. publicScope rejects hidden journals + entries up front,
+  // so a /journals/<hidden-id> URL 404s here without leaking metadata.
+  const scope = await publicScope(user.id)
+  const journal = await scope.journals.byId(journalId)
   if (!journal) notFound()
 
-  const preferences: UserPreferences =
-    profile?.preferences && typeof profile.preferences === 'object' && !Array.isArray(profile.preferences)
-      ? (profile.preferences as UserPreferences)
-      : {}
-  const autoLockMinutes = preferences.autoLockMinutes ?? 5
+  const [entries, { data: rawEntryTags }] = await Promise.all([
+    scope.entries.listByJournal(journalId),
+    supabase.from('entry_tags').select('entry_id, tags(tag_id, tag_name, color)'),
+  ])
 
-  // Flatten nested entry_tags → tags array
-  const entries = (rawEntries ?? []).map((entry) => {
-    const { entry_tags, ...rest } = entry as unknown as (typeof entry & { entry_tags: RawEntryTag[] })
-    const tags = (entry_tags ?? ([] as RawEntryTag[]))
-      .map((et: RawEntryTag) => et.tags)
-      .filter((t: RawEntryTag['tags']): t is { tag_id: string; tag_name: string; color: string } => t !== null)
-    return { ...rest, tags }
-  })
+  const tagsByEntry = new Map<string, { tag_id: string; tag_name: string; color: string }[]>()
+  for (const row of (rawEntryTags ?? []) as unknown as RawEntryTag[]) {
+    if (!row.tags) continue
+    const list = tagsByEntry.get(row.entry_id) ?? []
+    list.push(row.tags)
+    tagsByEntry.set(row.entry_id, list)
+  }
+
+  const entriesWithTags = entries.map((e) => ({
+    ...e,
+    tags: tagsByEntry.get(e.entry_id) ?? [],
+  }))
 
   return (
     <>
       <LiveDataRefresh />
       <BreadcrumbTitle id={journal.journal_id} title={journal.title} />
-      <LockGate
-        lockType={journal.lock_type as 'none' | 'pin' | 'password'}
-        entityId={journal.journal_id}
-        entityType="journal"
-        entityName={journal.title}
-        autoLockMinutes={autoLockMinutes}
-      >
-        <EntryList journal={journal} entries={entries} />
-      </LockGate>
+      <EntryList journal={journal} entries={entriesWithTags} />
     </>
   )
 }

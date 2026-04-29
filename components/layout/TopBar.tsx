@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Menu, Plus, ChevronRight, Home, Search } from 'lucide-react'
+import { Menu, Plus, ChevronRight, Home, Search, Lock } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 
 // Static top-level routes. Anything not matched here is treated as a dynamic
@@ -12,9 +12,15 @@ const SECTION_LABELS: Record<string, string> = {
   journals:     'Journals',
   analytics:    'Analytics',
   tags:         'Tags',
+  hidden:       'Hidden',
   'recycle-bin':'Recycle Bin',
   settings:     'Settings',
 }
+
+// Path segments under /hidden/** that are router grouping rather than
+// visitable pages. /hidden/entry/<eid> is the standalone-entry URL —
+// "entry" is just a namespace, not a crumb.
+const HIDDEN_GROUPING_SEGMENTS = new Set(['entry'])
 
 // Path segments that are structural grouping only (no crumb of their own).
 // e.g. /journals/abc/entries/def renders "Journals > [journal] > [entry]" —
@@ -30,12 +36,17 @@ function buildCrumbs(pathname: string, titles: Record<string, string>): Crumb[] 
   const parts = pathname.split('/').filter(Boolean)
   const crumbs: Crumb[] = []
   let href = ''
+  const inHidden = parts[0] === 'hidden'
 
   for (let i = 0; i < parts.length; i++) {
     const segment = parts[i]
     href += `/${segment}`
 
     if (STRUCTURAL_SEGMENTS.has(segment)) continue
+    // Under /hidden/**, "entry" is a router namespace (the standalone-entry
+    // route /hidden/entry/<eid>), not a visitable page — skip its crumb so
+    // the trail reads "Hidden > <entry title>".
+    if (inHidden && i > 0 && HIDDEN_GROUPING_SEGMENTS.has(segment)) continue
 
     const sectionLabel = SECTION_LABELS[segment]
     const label = sectionLabel ?? titles[segment] ?? fallbackLabel(segment, parts, i)
@@ -64,6 +75,13 @@ export default function TopBar() {
   const breadcrumbTitles = useUIStore((s) => s.breadcrumbTitles)
 
   const crumbs = buildCrumbs(pathname, breadcrumbTitles)
+
+  // The Hidden surface gets its own affordances: vault-scoped search and
+  // no "New Journal" button (creating journals is a public-only action).
+  // SearchOverlay derives the search scope from the surface context, so
+  // opening it from /hidden already searches hidden content — the button
+  // here just signals that to the user with a different label/icon.
+  const inHidden = pathname === '/hidden' || pathname.startsWith('/hidden/')
 
   function handleNewJournal() {
     setCreateJournalOpen(true)
@@ -123,20 +141,35 @@ export default function TopBar() {
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={openSearch}
-          className="p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
-          aria-label="Search (Ctrl+K)"
-        >
-          <Search size={18} />
-        </button>
-        <button
-          onClick={handleNewJournal}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[#1976D2] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:ring-offset-2 focus-visible:outline-none"
-        >
-          <Plus size={15} />
-          <span className="hidden sm:inline">New Journal</span>
-        </button>
+        {inHidden ? (
+          <button
+            onClick={openSearch}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+            aria-label="Search vault (Ctrl+K)"
+            title="Search vault"
+          >
+            <Lock size={14} />
+            <Search size={15} />
+            <span className="hidden sm:inline">Search vault</span>
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={openSearch}
+              className="p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+              aria-label="Search (Ctrl+K)"
+            >
+              <Search size={18} />
+            </button>
+            <button
+              onClick={handleNewJournal}
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#1976D2] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New Journal</span>
+            </button>
+          </>
+        )}
       </div>
     </header>
   )

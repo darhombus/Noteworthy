@@ -1,10 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
+import { isVaultOpen } from '@/lib/privacy/vault'
 
+/**
+ * Required query params:
+ *   q          — text query (defaults to '')
+ *   surface    — 'public' | 'hidden' (REQUIRED)
+ * Optional:
+ *   journalId, from, to, pinned, tagIds
+ *
+ * The `surface` discriminator is the security boundary. Hidden surface
+ * callers must have an open vault — otherwise 401. Public callers can
+ * never see hidden content because:
+ *   • search_entries() filters BOTH entries.is_hidden AND
+ *     journals.is_hidden when p_scope='public' (migration 014).
+ *   • The journal title/description query and the tag-only query both
+ *     apply the same is_hidden filters in app code.
+ *
+ * Hot path: this handler runs on every keystroke in the global Cmd+K
+ * overlay. The two latency-killers were (1) calling auth.getUser() here
+ * after proxy.ts already validated the session, and (2) firing five
+ * separate DB round trips per query. Both fixed below: the session is
+ * read locally (no network), and tags + journal_is_hidden are folded
+ * into search_entries() (migration 021), so a text search is now one
+ * RPC call + one journal title/description .or() in parallel.
+ */
 const searchParamsSchema = z.object({
   q: z.string().max(200).optional().transform((v) => v ?? ''),
+  surface: z.enum(['public', 'hidden']),
   journalId: z.string().uuid().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -12,7 +36,9 @@ const searchParamsSchema = z.object({
   tagIds: z.string().optional(),
 })
 
-type SearchRpcRow = {
+type Surface = 'public' | 'hidden'
+
+interface SearchEntryHit {
   entry_id: string
   title: string | null
   journal_id: string
@@ -21,69 +47,23 @@ type SearchRpcRow = {
   entry_date: string
   word_count: number
   is_pinned: boolean
-  content: unknown
+  /** Whether the entry's parent journal itself has is_hidden=true. Used by
+   *  the hidden surface to decide between /hidden/<jid>/<eid> (nested) and
+   *  /hidden/entry/<eid> (standalone — entry hidden inside a public
+   *  journal). Always false on the public surface. */
+  journal_is_hidden: boolean
+  snippet: string
+  matched_terms: string[]
+  tags: Array<{ tag_id: string; tag_name: string; color: string }>
 }
 
-type SearchRpcArgs = {
-  p_query: string
-  p_journal_id?: string
-  p_from?: string
-  p_to?: string
-  p_pinned?: boolean
-  p_tag_ids?: string[]
-}
-
-type SearchRpcClient = {
-  rpc(
-    fn: 'search_entries',
-    args: SearchRpcArgs,
-  ): Promise<{ data: SearchRpcRow[] | null; error: { message: string } | null }>
-}
-
-type JournalRow = {
-  journal_id: string
-  title: string
-  description: string | null
-  color: string
-  icon: string
-  entry_count: number
-  is_favorite: boolean
-  updated_at: string
-}
-
-function buildContextualSnippet(plainText: string, queryWords: string[]): string {
-  if (!plainText) return ''
-
-  const lowerText = plainText.toLowerCase()
-  const matchIndexes: number[] = []
-
-  for (const term of queryWords) {
-    if (!term.trim()) continue
-    const lowerTerm = term.toLowerCase()
-    const idx = lowerText.indexOf(lowerTerm)
-    if (idx !== -1) matchIndexes.push(idx)
-  }
-
-  if (matchIndexes.length === 0) {
-    return plainText.length > 200 ? plainText.slice(0, 200) + '\u2026' : plainText
-  }
-
-  const matchIndex = Math.min(...matchIndexes)
-  let start = Math.max(0, matchIndex - 60)
-  const end = start + 200
-
-  if (start > 0) {
-    const spaceIdx = plainText.indexOf(' ', start)
-    if (spaceIdx !== -1 && spaceIdx < end) {
-      start = spaceIdx + 1
-    }
-  }
-
-  const sliced = plainText.slice(start, end).trim()
-  const prefix = start > 0 ? '\u2026' : ''
-  const suffix = end < plainText.length ? '\u2026' : ''
-
-  return prefix + sliced + suffix
+function deriveMatchedTerms(text: string, queryWords: string[]): string[] {
+  if (!text || queryWords.length === 0) return []
+  const lowerText = text.toLowerCase()
+  return queryWords.filter((w) => {
+    const lw = w.trim().toLowerCase()
+    return lw.length > 0 && lowerText.includes(lw)
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -100,15 +80,25 @@ export async function GET(request: NextRequest) {
       { status: 400 },
     )
   }
-
   const params = parsed.data
 
   const supabase = await createClient()
+  // proxy.ts has already validated and refreshed the session for this
+  // request — calling auth.getUser() here repeats a network round trip
+  // to Supabase Auth (~150ms). Read the session locally instead. RLS is
+  // still the security boundary on every query below.
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  if (!session) {
+  const userId = session?.user.id
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Hidden surface requires the vault to be open. Stale tabs that lost
+  // the unlock window get a clean 401 they can branch on.
+  if (params.surface === 'hidden' && !(await isVaultOpen(userId))) {
+    return NextResponse.json({ error: 'vault_locked' }, { status: 401 })
   }
 
   const tagIdArray = params.tagIds
@@ -121,138 +111,74 @@ export async function GET(request: NextRequest) {
   const hasTextQuery = params.q.length > 0
   const hasTagFilter = !!(tagIdArray && tagIdArray.length > 0)
 
-  // Nothing to search
   if (!hasTextQuery && !hasTagFilter) {
     return NextResponse.json({ journals: [], entries: [] })
   }
 
   // ── Tag-only mode ──────────────────────────────────────────────────────────
-  // When there is no text query but tag IDs are present, skip the FTS RPC and
-  // query entries by tag relationship directly.
+  // No text query but tag IDs are present: skip the FTS RPC and query
+  // entries by tag relationship directly. Surface filter is applied
+  // through the inner-join on journals.
   if (!hasTextQuery && hasTagFilter) {
-    const { data: tagEntryRows, error: tagEntryError } = await supabase
-      .from('entry_tags')
-      .select('entry_id')
-      .in('tag_id', tagIdArray!)
-
-    if (tagEntryError) {
-      console.error('Tag-only search (entry_tags):', tagEntryError)
-      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
-    }
-
-    const entryIds = [...new Set((tagEntryRows ?? []).map((r) => r.entry_id))]
-
-    if (entryIds.length === 0) {
-      return NextResponse.json({ journals: [], entries: [] })
-    }
-
-    type TagOnlyRow = {
-      entry_id: string
-      title: string | null
-      journal_id: string
-      entry_date: string
-      word_count: number
-      is_pinned: boolean
-      content: unknown
-      journals: { title: string; color: string } | null
-      entry_tags: Array<{ tags: { tag_id: string; tag_name: string; color: string } | null }>
-    }
-
-    let tagOnlyQuery = supabase
-      .from('entries')
-      .select(
-        'entry_id, title, journal_id, entry_date, word_count, is_pinned, content, ' +
-        'journals!inner(title, color), ' +
-        'entry_tags(tags(tag_id, tag_name, color))',
-      )
-      .in('entry_id', entryIds)
-      .is('deleted_at', null)
-
-    if (params.journalId) tagOnlyQuery = tagOnlyQuery.eq('journal_id', params.journalId)
-    if (params.from) tagOnlyQuery = tagOnlyQuery.gte('entry_date', params.from)
-    if (params.to) tagOnlyQuery = tagOnlyQuery.lte('entry_date', params.to)
-    if (params.pinned === 'true') tagOnlyQuery = tagOnlyQuery.eq('is_pinned', true)
-
-    const { data: tagOnlyRows, error: tagOnlyError } = await tagOnlyQuery
-      .order('is_pinned', { ascending: false })
-      .order('entry_date', { ascending: false })
-      .limit(20)
-
-    if (tagOnlyError) {
-      console.error('Tag-only search (entries):', tagOnlyError)
-      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
-    }
-
-    const tagOnlyEntries = (tagOnlyRows as unknown as TagOnlyRow[]).map((row) => {
-      const plainText = (() => {
-        try {
-          if (!row.content || typeof row.content !== 'object') return ''
-          return extractPlainText(row.content as RichTextNode)
-        } catch {
-          return ''
-        }
-      })()
-      const snippet = buildContextualSnippet(plainText, [])
-
-      const tags = (row.entry_tags ?? [])
-        .map((et) => et.tags)
-        .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
-
-      return {
-        entry_id: row.entry_id,
-        title: row.title,
-        journal_id: row.journal_id,
-        journal_title: row.journals?.title ?? '',
-        journal_color: row.journals?.color ?? '#1976D2',
-        entry_date: row.entry_date,
-        word_count: row.word_count,
-        is_pinned: row.is_pinned,
-        snippet,
-        matched_terms: [] as string[],
-        tags,
-      }
-    })
-
-    return NextResponse.json({ journals: [], entries: tagOnlyEntries })
+    return tagOnlySearch(supabase, params.surface, params, tagIdArray!)
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
-  const rpcArgs: SearchRpcArgs = { p_query: params.q }
-  if (params.journalId) rpcArgs.p_journal_id = params.journalId
-  if (params.from) rpcArgs.p_from = params.from
-  if (params.to) rpcArgs.p_to = params.to
-  if (params.pinned === 'true') rpcArgs.p_pinned = true
-  if (tagIdArray && tagIdArray.length > 0) rpcArgs.p_tag_ids = tagIdArray
+  return textSearch(supabase, params.surface, userId, params, tagIdArray)
+}
 
+// ---------------------------------------------------------------------------
+// Text search (uses the search_entries RPC + journal title/description)
+// ---------------------------------------------------------------------------
+
+async function textSearch(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  surface: Surface,
+  userId: string,
+  params: z.infer<typeof searchParamsSchema>,
+  tagIdArray: string[] | undefined,
+): Promise<NextResponse> {
   const queryWords = params.q.trim().split(/\s+/).filter(Boolean)
-  const likePattern = `%${params.q}%`
 
-  // Run entry search and journal search (title + description) in parallel.
-  // Journal filters (journalId, from, to, pinned, tagIds) are entry-only.
-  const [entryResult, journalTitleResult, journalDescResult] = await Promise.all([
-    (supabase as unknown as SearchRpcClient).rpc('search_entries', rpcArgs),
-    supabase
-      .from('journals')
-      .select('journal_id, title, description, color, icon, entry_count, is_favorite, updated_at')
-      .eq('user_id', session.user.id)
-      .is('deleted_at', null)
-      .ilike('title', likePattern)
-      .order('is_favorite', { ascending: false })
-      .order('updated_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('journals')
-      .select('journal_id, title, description, color, icon, entry_count, is_favorite, updated_at')
-      .eq('user_id', session.user.id)
-      .is('deleted_at', null)
-      .ilike('description', likePattern)
-      .order('is_favorite', { ascending: false })
-      .order('updated_at', { ascending: false })
-      .limit(5),
+  // PostgREST's .or() expects literal commas between predicates and
+  // percent-style wildcards on each side of an ilike. The user query
+  // can contain neither special character without breaking the parser,
+  // so escape both before interpolating.
+  const safeForOr = params.q.replace(/[,()]/g, ' ')
+  const orFilter = `title.ilike.%${safeForOr}%,description.ilike.%${safeForOr}%`
+
+  // Per-journal search (EntryList passes journalId) doesn't care about
+  // matching journal titles or descriptions — those would never be the
+  // current journal anyway. Skip that query entirely in that mode so
+  // the global overlay's 2 round trips become 1 here.
+  const wantJournalMatches = !params.journalId
+
+  const journalSurfaceMatch = surface === 'hidden'
+  const [entryResult, journalsResult] = await Promise.all([
+    supabase.rpc('search_entries', {
+      p_user_id: userId,
+      p_query: params.q,
+      p_scope: surface,
+      p_journal_id: params.journalId,
+      p_from: params.from,
+      p_to: params.to,
+      p_pinned: params.pinned === 'true' ? true : undefined,
+      p_tag_ids: tagIdArray,
+    }),
+    wantJournalMatches
+      ? supabase
+          .from('journals')
+          .select('journal_id, title, description, color, icon, entry_count, is_favorite, updated_at')
+          .eq('user_id', userId)
+          .eq('is_hidden', journalSurfaceMatch)
+          .is('deleted_at', null)
+          .or(orFilter)
+          .order('is_favorite', { ascending: false })
+          .order('updated_at', { ascending: false })
+          .limit(5)
+      : Promise.resolve({ data: [], error: null } as const),
   ])
 
-  // Merge journal results, deduplicate, re-sort, limit 5
-  let journals: {
+  type JournalRow = {
     journal_id: string
     title: string
     description: string | null
@@ -260,30 +186,14 @@ export async function GET(request: NextRequest) {
     icon: string
     entry_count: number
     is_favorite: boolean
-  }[] = []
+    updated_at: string
+  }
 
-  if (journalTitleResult.error || journalDescResult.error) {
-    console.error(
-      'Journal search failed:',
-      journalTitleResult.error ?? journalDescResult.error,
-    )
+  let journals: Omit<JournalRow, 'updated_at'>[] = []
+  if (journalsResult.error) {
+    console.error('Journal search failed:', journalsResult.error)
   } else {
-    const seen = new Set<string>()
-    const merged: JournalRow[] = []
-    for (const row of [
-      ...(journalTitleResult.data as JournalRow[] ?? []),
-      ...(journalDescResult.data as JournalRow[] ?? []),
-    ]) {
-      if (!seen.has(row.journal_id)) {
-        seen.add(row.journal_id)
-        merged.push(row)
-      }
-    }
-    merged.sort((a, b) => {
-      if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
-      return b.updated_at.localeCompare(a.updated_at)
-    })
-    journals = merged.slice(0, 5).map((j) => ({
+    journals = ((journalsResult.data ?? []) as JournalRow[]).map((j) => ({
       journal_id: j.journal_id,
       title: j.title,
       description: j.description,
@@ -294,65 +204,30 @@ export async function GET(request: NextRequest) {
     }))
   }
 
-  // Fetch tags for all returned entries in one query
-  type EntryTagRow = {
-    entry_id: string
-    tags: { tag_id: string; tag_name: string; color: string } | null
-  }
-  const ftsEntryIds = (entryResult.data ?? []).map((r) => r.entry_id)
-  const tagMap = new Map<string, Array<{ tag_id: string; tag_name: string; color: string }>>()
-
-  if (ftsEntryIds.length > 0) {
-    const { data: entryTagRows } = await supabase
-      .from('entry_tags')
-      .select('entry_id, tags(tag_id, tag_name, color)')
-      .in('entry_id', ftsEntryIds)
-
-    for (const row of (entryTagRows as unknown as EntryTagRow[]) ?? []) {
-      if (!row.tags) continue
-      const list = tagMap.get(row.entry_id) ?? []
-      list.push(row.tags)
-      tagMap.set(row.entry_id, list)
-    }
-  }
-
-  // Process entries
-  let entries: {
+  // Process entry hits. Tags + parent journal hidden flag are returned
+  // by the RPC itself (migration 021), so no follow-up queries.
+  type RpcRow = {
     entry_id: string
     title: string | null
     journal_id: string
     journal_title: string
     journal_color: string
+    journal_is_hidden: boolean
     entry_date: string
     word_count: number
     is_pinned: boolean
     snippet: string
-    matched_terms: string[]
-    tags: Array<{ tag_id: string; tag_name: string; color: string }>
-  }[] = []
+    tags: Array<{ tag_id: string; tag_name: string; color: string }> | null
+  }
 
+  let entries: SearchEntryHit[] = []
   if (entryResult.error) {
     console.error('Entry search failed:', entryResult.error)
   } else {
-    entries = (entryResult.data ?? []).map((row) => {
-      const plainText = (() => {
-        try {
-          if (!row.content || typeof row.content !== 'object') return ''
-          return extractPlainText(row.content as RichTextNode)
-        } catch {
-          return ''
-        }
-      })()
-
-      const snippet = buildContextualSnippet(plainText, queryWords)
-
-      const lowerTitle = (row.title ?? '').toLowerCase()
-      const lowerText = plainText.toLowerCase()
-      const matched_terms = queryWords.filter((w) => {
-        const lw = w.toLowerCase()
-        return lowerTitle.includes(lw) || lowerText.includes(lw)
-      })
-
+    const rows = (entryResult.data ?? []) as unknown as RpcRow[]
+    entries = rows.map((row) => {
+      const snippet = row.snippet ?? ''
+      const matched_terms = deriveMatchedTerms(`${row.title ?? ''} ${snippet}`, queryWords)
       return {
         entry_id: row.entry_id,
         title: row.title,
@@ -362,12 +237,144 @@ export async function GET(request: NextRequest) {
         entry_date: row.entry_date,
         word_count: row.word_count,
         is_pinned: row.is_pinned,
+        journal_is_hidden: row.journal_is_hidden,
         snippet,
         matched_terms,
-        tags: tagMap.get(row.entry_id) ?? [],
+        tags: Array.isArray(row.tags) ? row.tags : [],
       }
     })
   }
 
   return NextResponse.json({ journals, entries })
+}
+
+// ---------------------------------------------------------------------------
+// Tag-only mode (no FTS query, just tags + optional date/pinned/journal filters)
+// ---------------------------------------------------------------------------
+
+async function tagOnlySearch(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  surface: Surface,
+  params: z.infer<typeof searchParamsSchema>,
+  tagIdArray: string[],
+): Promise<NextResponse> {
+  const { data: tagEntryRows, error: tagEntryError } = await supabase
+    .from('entry_tags')
+    .select('entry_id')
+    .in('tag_id', tagIdArray)
+  if (tagEntryError) {
+    console.error('Tag-only search (entry_tags):', tagEntryError)
+    return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+  }
+
+  const entryIds = [...new Set((tagEntryRows ?? []).map((r) => r.entry_id))]
+  if (entryIds.length === 0) {
+    return NextResponse.json({ journals: [], entries: [] })
+  }
+
+  type TagOnlyRow = {
+    entry_id: string
+    title: string | null
+    journal_id: string
+    entry_date: string
+    word_count: number
+    is_pinned: boolean
+    is_hidden: boolean
+    journals: { title: string; color: string; is_hidden: boolean } | null
+    entry_tags: Array<{ tags: { tag_id: string; tag_name: string; color: string } | null }>
+  }
+
+  const SELECT =
+    'entry_id, title, journal_id, entry_date, word_count, is_pinned, is_hidden, ' +
+    'journals!inner(title, color, is_hidden), ' +
+    'entry_tags(tags(tag_id, tag_name, color))'
+
+  function buildBaseQuery() {
+    let q = supabase
+      .from('entries')
+      .select(SELECT)
+      .in('entry_id', entryIds)
+      .is('deleted_at', null)
+    if (params.journalId) q = q.eq('journal_id', params.journalId)
+    if (params.from) q = q.gte('entry_date', params.from)
+    if (params.to) q = q.lte('entry_date', params.to)
+    if (params.pinned === 'true') q = q.eq('is_pinned', true)
+    return q
+  }
+
+  // Push the surface gate into Postgres. PostgREST can't express
+  //   entry.is_hidden = true OR journal.is_hidden = true
+  // in a single query (the OR can't span a foreign-table predicate), so the
+  // hidden surface runs two AND-shaped queries and merges in code. The
+  // public surface is a clean AND and stays one query.
+  let rawRows: TagOnlyRow[]
+  if (surface === 'public') {
+    const { data, error } = await buildBaseQuery()
+      .eq('is_hidden', false)
+      .eq('journals.is_hidden', false)
+      .order('is_pinned', { ascending: false })
+      .order('entry_date', { ascending: false })
+      .limit(20)
+    if (error) {
+      console.error('Tag-only search (entries):', error)
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+    }
+    rawRows = (data ?? []) as unknown as TagOnlyRow[]
+  } else {
+    const [byEntry, byJournal] = await Promise.all([
+      buildBaseQuery()
+        .eq('is_hidden', true)
+        .order('is_pinned', { ascending: false })
+        .order('entry_date', { ascending: false })
+        .limit(20),
+      buildBaseQuery()
+        .eq('is_hidden', false)
+        .eq('journals.is_hidden', true)
+        .order('is_pinned', { ascending: false })
+        .order('entry_date', { ascending: false })
+        .limit(20),
+    ])
+    if (byEntry.error || byJournal.error) {
+      console.error('Tag-only search (entries):', byEntry.error ?? byJournal.error)
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+    }
+
+    const seen = new Set<string>()
+    const merged: TagOnlyRow[] = []
+    for (const row of [
+      ...((byEntry.data ?? []) as unknown as TagOnlyRow[]),
+      ...((byJournal.data ?? []) as unknown as TagOnlyRow[]),
+    ]) {
+      if (seen.has(row.entry_id)) continue
+      seen.add(row.entry_id)
+      merged.push(row)
+    }
+    merged.sort((a, b) => {
+      if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
+      return b.entry_date.localeCompare(a.entry_date)
+    })
+    rawRows = merged.slice(0, 20)
+  }
+
+  const entries: SearchEntryHit[] = rawRows.map((row) => {
+    const tags = (row.entry_tags ?? [])
+      .map((et) => et.tags)
+      .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
+    return {
+      entry_id: row.entry_id,
+      title: row.title,
+      journal_id: row.journal_id,
+      journal_title: row.journals?.title ?? '',
+      journal_color: row.journals?.color ?? '#1976D2',
+      entry_date: row.entry_date,
+      word_count: row.word_count,
+      is_pinned: row.is_pinned,
+      journal_is_hidden: row.journals?.is_hidden ?? false,
+      snippet: '',
+      matched_terms: [],
+      tags,
+    }
+  })
+
+  return NextResponse.json({ journals: [], entries })
 }

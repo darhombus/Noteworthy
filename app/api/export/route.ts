@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import JSZip from 'jszip'
 import { createClient } from '@/lib/supabase/server'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import { tiptapToMarkdown } from '@/lib/utils/tiptapToMarkdown'
 import { isTiptapDoc, EMPTY_TIPTAP_DOC } from '@/lib/types/tiptap'
@@ -14,6 +15,10 @@ import type { Json } from '@/types/supabase'
 const exportSchema = z.object({
   format: z.enum(['json', 'markdown']),
   scope: z.enum(['entry', 'journal', 'all']),
+  /** Defaults to 'public' when omitted, matching backwards-compatible
+   *  callers from the public Export modal. The "Export hidden data" path
+   *  passes 'hidden' explicitly and only renders behind an open vault. */
+  surface: z.enum(['public', 'hidden']).optional().default('public'),
   entryId: z.string().uuid().optional(),
   journalId: z.string().uuid().optional(),
   from: z
@@ -143,9 +148,15 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { format, scope, entryId, journalId, from, to, includeTags: includeTagsRaw } =
+  const { format, scope, surface, entryId, journalId, from, to, includeTags: includeTagsRaw } =
     parsed.data
   const includeTags = (includeTagsRaw ?? 'true') === 'true'
+
+  // Hidden surface requires the vault to be open. Public requests pass
+  // through unchanged and have always excluded hidden content.
+  if (surface === 'hidden' && !(await isVaultOpen(user.id))) {
+    return NextResponse.json({ error: 'vault_locked' }, { status: 401 })
+  }
 
   // Validate scope ↔ id pairing
   if (scope === 'entry' && !entryId) {
@@ -177,16 +188,41 @@ export async function GET(request: NextRequest) {
     if (error || !data) {
       return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
     }
-    rows = [data as unknown as EntryRow]
+    const candidate = data as unknown as EntryRow
+    // Surface gate. Look up the entry's parent journal's is_hidden so the
+    // public/hidden split mirrors what the user actually sees.
+    const { data: parentJournal } = await supabase
+      .from('journals')
+      .select('is_hidden')
+      .eq('journal_id', candidate.journal_id)
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+      .single()
+    if (!parentJournal) {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+    }
+
+    const entryHidden = (candidate as unknown as { is_hidden?: boolean }).is_hidden ?? false
+    const inSurface =
+      surface === 'public'
+        ? !entryHidden && !parentJournal.is_hidden
+        : entryHidden || parentJournal.is_hidden
+    if (!inSurface) {
+      return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+    }
+    rows = [candidate]
   } else if (scope === 'journal') {
-    // Verify journal is accessible (RLS + ownership)
+    // The journal must live in the requested surface. Public exports refuse
+    // hidden journals; hidden exports refuse public ones.
     const { data: journalCheck } = await supabase
       .from('journals')
-      .select('journal_id')
+      .select('journal_id, is_hidden')
       .eq('journal_id', journalId!)
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
       .single()
 
-    if (!journalCheck) {
+    if (!journalCheck || journalCheck.is_hidden !== (surface === 'hidden')) {
       return NextResponse.json({ error: 'Journal not found' }, { status: 404 })
     }
 
@@ -197,6 +233,12 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('entry_date', { ascending: false })
 
+    // Public-side journals contain only public entries (the parent isn't
+    // hidden, and the surface gate excludes individually-hidden ones too).
+    // Hidden-side journals are themselves hidden, so every entry in them
+    // already counts as hidden — no additional is_hidden filter needed.
+    if (surface === 'public') q = q.eq('is_hidden', false)
+
     if (from) q = q.gte('entry_date', from)
     if (to) q = q.lte('entry_date', to)
 
@@ -204,12 +246,44 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     rows = (data ?? []) as unknown as EntryRow[]
   } else {
-    // scope === 'all' — RLS ensures only the user's entries are returned
+    // scope === 'all'. Split surfaces explicitly so the filter intent is
+    // obvious and the caller can't accidentally cross the boundary.
+    const { data: journalRows } = await supabase
+      .from('journals')
+      .select('journal_id, is_hidden')
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+    const hiddenJournalIds = (journalRows ?? [])
+      .filter((j) => j.is_hidden)
+      .map((j) => j.journal_id)
+    const publicJournalIds = (journalRows ?? [])
+      .filter((j) => !j.is_hidden)
+      .map((j) => j.journal_id)
+
     let q = supabase
       .from('entries')
       .select(ENTRY_SELECT)
       .is('deleted_at', null)
       .order('entry_date', { ascending: false })
+
+    if (surface === 'public') {
+      q = q.eq('is_hidden', false)
+      if (hiddenJournalIds.length > 0) {
+        q = q.not('journal_id', 'in', `(${hiddenJournalIds.join(',')})`)
+      }
+    } else {
+      // Hidden surface: entries that are themselves hidden OR live in a
+      // hidden journal. Encoded via two PostgREST `or` predicates.
+      const hiddenJournalCsv = hiddenJournalIds.length > 0 ? hiddenJournalIds.join(',') : null
+      if (hiddenJournalCsv) {
+        q = q.or(`is_hidden.eq.true,journal_id.in.(${hiddenJournalCsv})`)
+      } else {
+        q = q.eq('is_hidden', true)
+      }
+      // Belt-and-braces: ignore anything that snuck in pointing at a journal
+      // we don't own / can't see. RLS already enforces this.
+      void publicJournalIds
+    }
 
     if (from) q = q.gte('entry_date', from)
     if (to) q = q.lte('entry_date', to)

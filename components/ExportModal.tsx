@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { X, Download } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSurface } from '@/lib/surface'
 
 interface ExportModalProps {
   scope: 'entry' | 'journal' | 'all'
@@ -12,6 +13,10 @@ interface ExportModalProps {
 }
 
 export default function ExportModal({ scope, entryId, journalId, onClose }: ExportModalProps) {
+  // Surface is read from context. Callers under /hidden/** automatically
+  // export hidden data; callers under /journals/** or /settings stay public.
+  // The /api/export route validates the vault when surface=hidden.
+  const surface = useSurface()
   const [format, setFormat] = useState<'json' | 'markdown'>('markdown')
   const [includeTags, setIncludeTags] = useState(true)
   const [from, setFrom] = useState('')
@@ -23,7 +28,7 @@ export default function ExportModal({ scope, entryId, journalId, onClose }: Expo
   async function handleExport() {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ format, scope })
+      const params = new URLSearchParams({ format, scope, surface })
       if (entryId) params.set('entryId', entryId)
       if (journalId) params.set('journalId', journalId)
       if (from) params.set('from', from)
