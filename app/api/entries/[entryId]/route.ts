@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { updateEntrySchema } from '@/lib/validations/entries'
+import { isVaultOpen } from '@/lib/privacy/vault'
 import type { Database } from '@/types/supabase'
 
 type Json = Database['public']['Tables']['entries']['Insert']['content']
@@ -36,15 +37,25 @@ export async function PATCH(
     )
   }
 
+  // Surface gate: hidden entries (or entries in hidden journals) cannot be
+  // written without an open vault, even though RLS would allow the update.
+  // We fetch updated_at here too so the conflict check can reuse the row.
+  const { data: current } = await supabase
+    .from('entries')
+    .select('updated_at, is_hidden, journals!inner(is_hidden)')
+    .eq('entry_id', entryId)
+    .single()
+
+  if (!current) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+
+  type JournalHiddenRel = { is_hidden: boolean }
+  const journalHidden =
+    (current.journals as unknown as JournalHiddenRel | null)?.is_hidden ?? false
+  if ((current.is_hidden || journalHidden) && !(await isVaultOpen(user.id))) {
+    return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
+  }
+
   if (!force && clientUpdatedAt) {
-    const { data: current } = await supabase
-      .from('entries')
-      .select('updated_at')
-      .eq('entry_id', entryId)
-      .single()
-
-    if (!current) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
-
     const dbTime = new Date(current.updated_at).getTime()
     const clientTime = new Date(clientUpdatedAt).getTime()
     if (dbTime !== clientTime) return NextResponse.json({ conflict: true }, { status: 409 })

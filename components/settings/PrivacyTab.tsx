@@ -3,15 +3,16 @@
 import { useState } from 'react'
 import { Download, AlertTriangle } from 'lucide-react'
 import ExportModal from '@/components/ExportModal'
+import VaultSection from './VaultSection'
 import { formatStorageSize } from '@/lib/storage/format'
-import PrivacyPinSection from './PrivacyPinSection'
 
 interface Props {
   currentUsage: number
   storageLimit: number
   imageUsage: number
   videoUsage: number
-  privacyPinType: 'none' | 'pin' | 'password'
+  vaultSecretType: 'pin' | 'password' | null
+  vaultAutoLockMinutes: number
 }
 
 export default function PrivacyTab({
@@ -19,7 +20,8 @@ export default function PrivacyTab({
   storageLimit,
   imageUsage,
   videoUsage,
-  privacyPinType,
+  vaultSecretType,
+  vaultAutoLockMinutes,
 }: Props) {
   const [exportOpen, setExportOpen] = useState(false)
 
@@ -35,8 +37,11 @@ export default function PrivacyTab({
 
   return (
     <div className="space-y-5">
-      {/* Privacy PIN — gate for the Hidden vault */}
-      <PrivacyPinSection pinType={privacyPinType} />
+      {/* Hidden Vault — setup, manage credential, auto-lock, danger zone */}
+      <VaultSection
+        secretType={vaultSecretType}
+        autoLockMinutes={vaultAutoLockMinutes}
+      />
 
       {/* Download All Data */}
       <div className="rounded-xl border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#1E1E1E] p-6 space-y-3">

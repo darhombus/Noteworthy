@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { publicScope } from '@/lib/data/scope'
 import JournalGrid from '@/components/journals/JournalGrid'
 import LiveDataRefresh from '@/components/LiveDataRefresh'
 
@@ -10,43 +11,22 @@ export default async function JournalsPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: journals }, { data: visibleEntryRows }] = await Promise.all([
-    supabase
-      .from('journals')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_hidden', false)
-      .is('deleted_at', null)
-      .order('is_favorite', { ascending: false })
-      .order('updated_at', { ascending: false }),
-    // The stored journals.entry_count is maintained by a DB trigger that
-    // counts *all* entries (hidden or not). The card shows only entries the
-    // user can see, so we count visible (non-hidden, non-deleted) entries
-    // per journal here and override entry_count before passing down.
-    supabase
-      .from('entries')
-      .select('journal_id')
-      .eq('is_hidden', false)
-      .is('deleted_at', null),
-  ])
+  // Public surface — only public journals. The split rollup trigger added
+  // in migration 014 keeps `entry_count` in sync with the count of public,
+  // non-deleted entries, so we no longer need to override it here.
+  const scope = await publicScope(user.id)
+  const journals = await scope.journals.list()
 
-  const visibleCountByJournal = new Map<string, number>()
-  for (const row of visibleEntryRows ?? []) {
-    visibleCountByJournal.set(
-      row.journal_id,
-      (visibleCountByJournal.get(row.journal_id) ?? 0) + 1,
-    )
-  }
-
-  const journalsWithVisibleCount = (journals ?? []).map((j) => ({
-    ...j,
-    entry_count: visibleCountByJournal.get(j.journal_id) ?? 0,
-  }))
+  // Re-sort with favourites first to match the original card grid order.
+  const sorted = [...journals].sort((a, b) => {
+    if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  })
 
   return (
     <>
       <LiveDataRefresh />
-      <JournalGrid journals={journalsWithVisibleCount} />
+      <JournalGrid journals={sorted} />
     </>
   )
 }

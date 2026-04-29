@@ -60,9 +60,9 @@ export async function createEntry(
 
   revalidatePath(`/journals/${parsed.data.journal_id}`)
   // The parent journal may be hidden, in which case the user created this
-  // entry from inside /hidden/journals/<jid>. Revalidate the hidden mirror
-  // so the list updates immediately.
-  revalidatePath(`/hidden/journals/${parsed.data.journal_id}`)
+  // entry from inside /hidden/<jid>. Revalidate the hidden mirror so the
+  // list updates immediately.
+  revalidatePath(`/hidden/${parsed.data.journal_id}`)
   revalidatePath('/hidden')
   return { entry_id: entry.entry_id }
 }
@@ -147,31 +147,15 @@ export async function softDeleteEntry(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Read lock fields before the soft-delete so we can write them back explicitly.
-  // Without this, lock_type (DEFAULT 'none') can be silently reset during the
-  // update on some Supabase client versions, causing restored entries to lose
-  // their lock.
-  const { data: current, error: readError } = await supabase
-    .from('entries')
-    .select('lock_type, lock_hash')
-    .eq('entry_id', id)
-    .single()
-
-  if (readError) return { error: readError.message }
-
   const { error } = await supabase
     .from('entries')
-    .update({
-      deleted_at: new Date().toISOString(),
-      lock_type: current.lock_type,
-      lock_hash: current.lock_hash,
-    })
+    .update({ deleted_at: new Date().toISOString() })
     .eq('entry_id', id)
 
   if (error) return { error: error.message }
 
   revalidatePath(`/journals/${journalId}`)
-  revalidatePath(`/hidden/journals/${journalId}`)
+  revalidatePath(`/hidden/${journalId}`)
   revalidatePath('/hidden')
   return { success: true }
 }

@@ -7,8 +7,6 @@ export interface UserPreferences {
   theme?: 'light' | 'dark' | 'system'
   autoSaveInterval?: number
   dateFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
-  /** Minutes of inactivity before locked journals/entries auto-relock. 0 = never. */
-  autoLockMinutes?: number
   timezone?: string
 }
 

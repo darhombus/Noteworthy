@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkStorageQuota, formatStorageSize } from '@/lib/storage/quota'
+import { isVaultOpen } from '@/lib/privacy/vault'
 
 const ALLOWED_IMAGE_MIMES = new Set([
   'image/jpeg',
@@ -75,16 +76,25 @@ export async function POST(request: NextRequest) {
 
   // Ownership verification: the entry must belong to a journal owned by the
   // current user. RLS would also block the insert, but we check here so we
-  // never burn quota or upload bytes to Storage for a forbidden entry.
+  // never burn quota or upload bytes to Storage for a forbidden entry. We
+  // also pull is_hidden so we can surface-gate uploads to hidden entries
+  // behind an open vault.
   const { data: ownership } = await supabase
     .from('entries')
-    .select('entry_id, journals!inner(user_id)')
+    .select('entry_id, is_hidden, journals!inner(user_id, is_hidden)')
     .eq('entry_id', entryId)
     .eq('journals.user_id', user.id)
     .maybeSingle()
 
   if (!ownership) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
+  type JournalHiddenRel = { user_id: string; is_hidden: boolean }
+  const journalHidden =
+    (ownership.journals as unknown as JournalHiddenRel | null)?.is_hidden ?? false
+  if ((ownership.is_hidden || journalHidden) && !(await isVaultOpen(user.id))) {
+    return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
   }
 
   // Parse optional video metadata from form data

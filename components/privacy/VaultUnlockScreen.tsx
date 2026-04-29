@@ -1,116 +1,118 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Shield, ArrowLeft } from 'lucide-react'
-import SecretInput from '@/components/lock/SecretInput'
-import { unlockVault } from '@/lib/actions/privacy'
+import { Lock, ShieldCheck } from 'lucide-react'
+import { toast } from 'sonner'
+import SecretInput, { type SecretInputHandle } from '@/components/lock/SecretInput'
+import { unlockVault } from '@/lib/actions/vault'
 
 interface Props {
-  pinType: 'pin' | 'password'
+  secretType: 'pin' | 'password'
 }
 
-export default function VaultUnlockScreen({ pinType }: Props) {
+export default function VaultUnlockScreen({ secretType }: Props) {
   const router = useRouter()
   const [secret, setSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [verifying, setVerifying] = useState(false)
-  const [shake, setShake] = useState(false)
+  const [shakeKey, setShakeKey] = useState(0)
+  const [cooldownSeconds, setCooldownSeconds] = useState(0)
+  const [pending, startTransition] = useTransition()
+  const inputRef = useRef<SecretInputHandle>(null)
 
-  function triggerShake() {
-    setShake(true)
-    setTimeout(() => setShake(false), 500)
-  }
+  // Tick down the cooldown countdown from the server. The server is the
+  // source of truth — this UI counter just tells the user when they can
+  // try again. If they refresh, a fresh attempt re-derives the state.
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return
+    const id = setInterval(() => {
+      setCooldownSeconds((s) => Math.max(0, s - 1))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [cooldownSeconds])
 
-  async function handleVerify(value?: string) {
-    const toVerify = value ?? secret
-    if (!toVerify || (pinType === 'pin' && toVerify.length < 4)) return
+  const isCooling = cooldownSeconds > 0
 
-    setVerifying(true)
-    setError(null)
-    const result = await unlockVault(toVerify)
-    setVerifying(false)
-
-    if ('error' in result) {
-      setError(result.error)
-      setSecret('')
-      triggerShake()
-    } else {
-      router.refresh()
+  function handleSubmit(value?: string) {
+    if (isCooling) return
+    const candidate = value ?? secret
+    if (!candidate) {
+      setError(secretType === 'pin' ? 'Enter your 4-digit PIN' : 'Enter your password')
+      setShakeKey((k) => k + 1)
+      return
     }
+    startTransition(async () => {
+      const result = await unlockVault(candidate)
+      if ('error' in result) {
+        setError(result.error)
+        setSecret('')
+        setShakeKey((k) => k + 1)
+        // Server-side rate limiter signals "too many tries" with a
+        // retryAfterSeconds payload. Mirror it locally and surface a toast.
+        if ('retryAfterSeconds' in result && typeof result.retryAfterSeconds === 'number') {
+          setCooldownSeconds(result.retryAfterSeconds)
+          toast.error(`Too many attempts — try again in ${result.retryAfterSeconds}s`)
+        }
+        setTimeout(() => inputRef.current?.focus(), 0)
+        return
+      }
+      router.refresh()
+    })
   }
 
   return (
-    <div className="relative min-h-[60vh] flex items-center justify-center p-6">
-      <button
-        type="button"
-        onClick={() => router.push('/dashboard')}
-        className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-        aria-label="Go back"
+    <div className="max-w-md mx-auto py-12">
+      <div
+        key={shakeKey}
+        className={`rounded-xl border border-[#E0E0E0] dark:border-slate-700 bg-white dark:bg-[#1E1E1E] p-8 space-y-6 shadow-sm ${error || isCooling ? 'vault-shake' : ''}`}
       >
-        <ArrowLeft size={16} />
-        <span>Back</span>
-      </button>
-
-      <div className="w-full max-w-[360px] flex flex-col items-center gap-6">
-        <div className="w-16 h-16 rounded-2xl bg-[#1976D2]/10 dark:bg-[#1E3A5F] flex items-center justify-center">
-          <Shield size={28} className="text-[#1976D2]" />
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#1976D2]/10 dark:bg-[#1E3A5F] flex items-center justify-center shrink-0">
+            <Lock size={20} className="text-[#1976D2]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-[#212121] dark:text-[#F5F5F5]">Vault is locked</h1>
+            <p className="text-sm text-[#757575] dark:text-[#9E9E9E] mt-1">
+              Enter your {secretType === 'pin' ? 'PIN' : 'password'} to view hidden journals and entries.
+            </p>
+          </div>
         </div>
 
-        <div className="text-center">
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">Private Vault</h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1">
-            {pinType === 'pin'
-              ? 'Enter your 4-digit PIN to view hidden items'
-              : 'Enter your password to view hidden items'}
-          </p>
-        </div>
-
-        <div className={`w-full flex flex-col items-center gap-2 ${shake ? 'animate-[shake_0.4s_ease]' : ''}`}>
+        <div>
+          <label className="block text-xs font-semibold text-[#757575] dark:text-[#9E9E9E] mb-1.5">
+            {secretType === 'pin' ? 'PIN' : 'Password'}
+          </label>
           <SecretInput
-            lockType={pinType}
+            ref={inputRef}
+            lockType={secretType}
             value={secret}
             onChange={(v) => { setSecret(v); setError(null) }}
-            error={!!error}
             autoFocus
             showPassword={showSecret}
-            onToggleShow={() => setShowSecret((v) => !v)}
-            onEnter={(v) => handleVerify(v)}
+            onToggleShow={secretType === 'password' ? () => setShowSecret((v) => !v) : undefined}
+            placeholder={secretType === 'password' ? 'Enter password' : undefined}
+            onEnter={(value) => handleSubmit(value)}
           />
-          {error && (
-            <p className="text-xs text-red-500 dark:text-red-400 text-center">{error}</p>
-          )}
         </div>
 
-        {pinType === 'password' && (
+        {error && (
+          <p className="text-sm text-red-500 dark:text-red-400">
+            {isCooling ? `Too many attempts. Try again in ${cooldownSeconds}s` : error}
+          </p>
+        )}
+
+        <div className="flex justify-end pt-1">
           <button
-            onClick={() => handleVerify()}
-            disabled={verifying || !secret}
-            className="w-full py-3 rounded-xl bg-[#1976D2] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => handleSubmit()}
+            disabled={pending || !secret || isCooling}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-[#1976D2] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {verifying ? 'Verifying…' : 'Unlock'}
+            <ShieldCheck size={14} />
+            {pending ? 'Unlocking…' : isCooling ? `Wait ${cooldownSeconds}s` : 'Unlock'}
           </button>
-        )}
-
-        {verifying && pinType === 'pin' && (
-          <p className="text-xs text-[var(--text-muted)]">Verifying…</p>
-        )}
-
-        <p className="text-xs text-[var(--text-muted)] text-center">
-          Forgot PIN? You can reset it in Settings → Privacy.
-        </p>
+        </div>
       </div>
-
-      <style>{`
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          20%      { transform: translateX(-8px); }
-          40%      { transform: translateX(8px); }
-          60%      { transform: translateX(-5px); }
-          80%      { transform: translateX(5px); }
-        }
-      `}</style>
     </div>
   )
 }

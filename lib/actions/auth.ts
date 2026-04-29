@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import { closeVault } from '@/lib/privacy/vault'
 
 export async function signUpAction(data: {
   email: string
@@ -82,6 +83,7 @@ export async function updatePasswordAction(
   await supabase.auth.signOut()
   const cookieStore = await cookies()
   cookieStore.delete('nw_remember_me')
+  await closeVault()
 
   return { success: true }
 }
@@ -91,4 +93,7 @@ export async function signOutAction(): Promise<void> {
   await supabase.auth.signOut()
   const cookieStore = await cookies()
   cookieStore.delete('nw_remember_me')
+  // Logout always discards the vault session — the next sign-in must
+  // re-unlock to see hidden content.
+  await closeVault()
 }

@@ -1,9 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { publicScope } from '@/lib/data/scope'
 import EntryEditor from '@/components/entries/EntryEditor'
-import LockGate from '@/components/lock/LockGate'
 import BreadcrumbTitle from '@/components/layout/BreadcrumbTitle'
-import type { UserPreferences } from '@/lib/actions/settings'
 
 interface EntryPageProps {
   params: Promise<{ journalId: string; entryId: string }>
@@ -21,49 +20,23 @@ export default async function EntryPage({ params }: EntryPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // This is the "public" entry route. Hidden entries live exclusively under
-  // /hidden/** — this route always filters them out, and refuses to render
-  // inside a hidden journal. (See app/(app)/hidden/entries and
-  // app/(app)/hidden/journals/[journalId]/entries for the hidden mirrors.)
-  const [
-    { data: entry },
-    { data: journal },
-    { data: rawEntryTags },
-    { data: profile },
-  ] = await Promise.all([
-    supabase
-      .from('entries')
-      .select('*')
-      .eq('entry_id', entryId)
-      .eq('is_hidden', false)
-      .is('deleted_at', null)
-      .single(),
-    supabase
-      .from('journals')
-      .select('journal_id, title, color, entry_lock_type')
-      .eq('journal_id', journalId)
-      .eq('user_id', user.id)
-      .eq('is_hidden', false)
-      .is('deleted_at', null)
-      .single(),
-    supabase
-      .from('entry_tags')
-      .select('tags(tag_id, tag_name, color)')
-      .eq('entry_id', entryId),
-    supabase
-      .from('profiles')
-      .select('preferences')
-      .eq('user_id', user.id)
-      .single(),
+  // Public route. publicScope.entries.byId enforces "entry is_hidden=false
+  // AND parent journal is_hidden=false" — a hidden entry under a public
+  // journal, OR any entry under a hidden journal, returns null and 404s.
+  const scope = await publicScope(user.id)
+  const [entry, journal] = await Promise.all([
+    scope.entries.byId(entryId),
+    scope.journals.byId(journalId),
   ])
 
   if (!entry || !journal) notFound()
+  // Defence in depth: the URL must match the entry's actual parent.
+  if (entry.journal_id !== journal.journal_id) notFound()
 
-  const preferences: UserPreferences =
-    profile?.preferences && typeof profile.preferences === 'object' && !Array.isArray(profile.preferences)
-      ? (profile.preferences as UserPreferences)
-      : {}
-  const autoLockMinutes = preferences.autoLockMinutes ?? 5
+  const { data: rawEntryTags } = await supabase
+    .from('entry_tags')
+    .select('tags(tag_id, tag_name, color)')
+    .eq('entry_id', entryId)
 
   const initialTags = ((rawEntryTags ?? []) as unknown as RawEntryTag[])
     .map((et) => et.tags)
@@ -73,20 +46,12 @@ export default async function EntryPage({ params }: EntryPageProps) {
     <>
       <BreadcrumbTitle id={journal.journal_id} title={journal.title} />
       <BreadcrumbTitle id={entry.entry_id} title={entry.title?.trim() || 'Untitled'} />
-      <LockGate
-        lockType={entry.lock_type as 'none' | 'pin' | 'password'}
-        entityId={entry.entry_id}
-        entityType="entry"
-        entityName={entry.title ?? undefined}
-        autoLockMinutes={autoLockMinutes}
-      >
-        <EntryEditor
-          key={entry.entry_id}
-          entry={entry}
-          journal={journal}
-          initialTags={initialTags}
-        />
-      </LockGate>
+      <EntryEditor
+        key={entry.entry_id}
+        entry={entry}
+        journal={journal}
+        initialTags={initialTags}
+      />
     </>
   )
 }

@@ -29,14 +29,12 @@ export default async function SettingsPage({ searchParams }: Props) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url, preferences, privacy_pin_type')
+    .select('full_name, avatar_url, preferences, vault_secret_type, vault_auto_lock_minutes')
     .eq('user_id', user.id)
     .single()
 
-  const privacyPinType = (profile?.privacy_pin_type ?? 'none') as
-    | 'none'
-    | 'pin'
-    | 'password'
+  const vaultSecretType = (profile?.vault_secret_type ?? null) as 'pin' | 'password' | null
+  const vaultAutoLockMinutes = profile?.vault_auto_lock_minutes ?? 5
 
   const preferences: UserPreferences =
     profile?.preferences &&
@@ -92,7 +90,8 @@ export default async function SettingsPage({ searchParams }: Props) {
           storageLimit={storageLimit}
           imageUsage={imageUsage}
           videoUsage={videoUsage}
-          privacyPinType={privacyPinType}
+          vaultSecretType={vaultSecretType}
+          vaultAutoLockMinutes={vaultAutoLockMinutes}
         />
       )}
     </div>

@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { ArrowLeft, MoreHorizontal, Eye, Pencil, Calendar } from 'lucide-react'
-import { journalListHref, isHiddenPathname } from '@/lib/utils/entryRoute'
 import { EditorContent } from '@tiptap/react'
+import { useSurface } from '@/lib/surface'
+import { journalHref, journalListHref } from '@/lib/utils/href'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useBeforeUnload } from '@/hooks/useBeforeUnload'
 import { useEntryRealtime } from '@/hooks/useEntryRealtime'
@@ -22,14 +23,13 @@ import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import type { LockType } from '@/components/lock/EntryLockPanel'
 import type { Database } from '@/types/supabase'
 import { EMPTY_TIPTAP_DOC, isTiptapDoc, type TiptapDoc } from '@/lib/types/tiptap'
 
 type Entry = Database['public']['Tables']['entries']['Row']
 type JournalMeta = Pick<
   Database['public']['Tables']['journals']['Row'],
-  'journal_id' | 'title' | 'color'
+  'journal_id' | 'title' | 'color' | 'is_hidden'
 >
 
 interface EntryTag {
@@ -46,8 +46,7 @@ interface EntryEditorProps {
 
 export default function EntryEditor({ entry, journal, initialTags }: EntryEditorProps) {
   const router = useRouter()
-  const pathname = usePathname()
-  const inHiddenContext = isHiddenPathname(pathname)
+  const surface = useSurface()
 
   // Read the stored doc once. `isTiptapDoc` mirrors the DB CHECK constraint,
   // so anything that somehow slipped through falls back to an empty doc.
@@ -65,10 +64,6 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  // Entry lock state — kept here only so DeleteEntryModal gets the right
-  // lockType. Managing the lock itself now happens from the entry card's
-  // overflow menu, not inside the editor.
-  const entryLockType: LockType = (entry.lock_type as LockType | undefined) ?? 'none'
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Latest selectable date — today, in local time, as YYYY-MM-DD.
@@ -259,19 +254,15 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
     if (saveStatus === 'pending') {
       await saveNow()
     }
-    // From a hidden-journal entry → back to /hidden/journals/<jid>.
-    // From a standalone hidden entry (/hidden/entries/<eid>) → back to /hidden,
-    // because the parent journal lives on the public side and the user
-    // reached the editor through the Hidden dashboard, not the journal.
-    if (inHiddenContext) {
-      if (pathname.startsWith('/hidden/journals/')) {
-        router.push(journalListHref(pathname, journal.journal_id))
-      } else {
-        router.push('/hidden')
-      }
+    // From a hidden-journal entry (parent is_hidden) → back to the journal
+    // page. From a standalone hidden entry (parent is public) → back to the
+    // /hidden dashboard, since the user reached the editor through the
+    // dashboard rather than the journal list.
+    if (surface === 'hidden' && !journal.is_hidden) {
+      router.push(journalListHref('hidden'))
       return
     }
-    router.push(`/journals/${journal.journal_id}`)
+    router.push(journalHref(surface, journal.journal_id))
   }
 
   async function handleDiscard() {
@@ -495,7 +486,7 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
         <DeleteEntryModal
           entryId={entry.entry_id}
           journalId={journal.journal_id}
-          lockType={entryLockType}
+          parentJournalIsHidden={journal.is_hidden}
           onClose={() => setShowDeleteModal(false)}
         />
       )}

@@ -3,11 +3,13 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2, Shield } from 'lucide-react'
+import { MoreHorizontal, Calendar, Star, Pencil, Download, Trash2, EyeOff, Eye } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { toggleFavourite } from '@/lib/actions/journals'
-import { hideJournal, unhideJournal } from '@/lib/actions/privacy'
+import { hideJournal, unhideJournal } from '@/lib/actions/vault'
+import { useSurface } from '@/lib/surface'
+import { journalHref } from '@/lib/utils/href'
 import ExportModal from '@/components/ExportModal'
 import BookIcon from '@/components/ui/BookIcon'
 import type { Database } from '@/types/supabase'
@@ -29,6 +31,7 @@ interface JournalCardProps {
 
 export default function JournalCard({ journal, onEdit, onDelete }: JournalCardProps) {
   const router = useRouter()
+  const surface = useSurface()
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isFav, setIsFav] = useState(journal.is_favorite)
@@ -73,12 +76,26 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
     }
   }
 
-  async function handleHide() {
-    const action = journal.is_hidden ? unhideJournal : hideJournal
-    const result = await action(journal.journal_id)
+  async function handleHideToggle() {
+    if (surface === 'hidden') {
+      const result = await unhideJournal(journal.journal_id)
+      if ('error' in result) {
+        if (result.error === 'vault_locked') {
+          toast.error('Vault is locked — unlock to unhide journals')
+        } else {
+          toast.error(result.error)
+        }
+        return
+      }
+      toast.success('Journal unhidden')
+      router.refresh()
+      return
+    }
+
+    const result = await hideJournal(journal.journal_id)
     if ('error' in result) {
-      if ('code' in result && result.code === 'no_pin') {
-        toast.error(result.error, {
+      if (result.error.startsWith('no_vault')) {
+        toast.error('Set up your vault first', {
           action: {
             label: 'Set up',
             onClick: () => router.push('/hidden'),
@@ -92,10 +109,10 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
       } else {
         toast.error(result.error)
       }
-    } else {
-      toast.success(journal.is_hidden ? 'Journal unhidden' : 'Journal hidden')
-      router.refresh()
+      return
     }
+    toast.success('Journal hidden')
+    router.refresh()
   }
 
   function handleMenuToggle(e: React.MouseEvent) {
@@ -139,7 +156,7 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           ? undefined
           : '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)',
       }}
-      onClick={() => router.push(`/journals/${journal.journal_id}`)}
+      onClick={() => router.push(journalHref(surface, journal.journal_id))}
     >
       {/* Color strip */}
       <div className="h-1" style={{ background: accent }} />
@@ -243,11 +260,13 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
           </button>
 
           <button
-            onClick={() => { setMenuOpen(false); handleHide() }}
+            onClick={() => { setMenuOpen(false); handleHideToggle() }}
             className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
-            <Shield size={14} className={journal.is_hidden ? 'text-[#1976D2] shrink-0' : 'text-[#9E9E9E] shrink-0'} />
-            <span>{journal.is_hidden ? 'Unhide journal' : 'Hide journal'}</span>
+            {surface === 'hidden'
+              ? <Eye size={14} className="text-[#9E9E9E] shrink-0" />
+              : <EyeOff size={14} className="text-[#9E9E9E] shrink-0" />}
+            <span>{surface === 'hidden' ? 'Unhide journal' : 'Hide journal'}</span>
           </button>
 
           <div className="my-1 border-t border-[var(--border)]" />

@@ -28,9 +28,16 @@ export default async function TagsPage() {
   )
 
   const [{ data: tags }, { data: entryTagRows }] = await Promise.all([
+    // usage_count is scoped to public-visible entries by migration 023.
+    // Tags only attached to vault entries have usage_count = 0, which
+    // would render as orphan rows here even though their dropdown is
+    // empty. Hide those — the tag still exists in the DB and the
+    // /api/tags autocomplete still finds it, so a user typing the same
+    // name on a public entry reuses the row instead of duplicating.
     supabase
       .from('tags')
       .select('tag_id, tag_name, color, usage_count')
+      .gt('usage_count', 0)
       .order('usage_count', { ascending: false })
       .order('tag_name', { ascending: true }),
     supabase

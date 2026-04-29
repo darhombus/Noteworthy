@@ -1,14 +1,12 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { hiddenScope } from '@/lib/data/scope'
 import { isVaultOpen } from '@/lib/privacy/vault'
-import VaultUnlockScreen from '@/components/privacy/VaultUnlockScreen'
 import VaultSetupScreen from '@/components/privacy/VaultSetupScreen'
+import VaultUnlockScreen from '@/components/privacy/VaultUnlockScreen'
 import HiddenView from '@/components/privacy/HiddenView'
-import LiveDataRefresh from '@/components/LiveDataRefresh'
 
-export const dynamic = 'force-dynamic'
-
-type PrivacyPinType = 'none' | 'pin' | 'password'
+type SecretType = 'pin' | 'password'
 
 export default async function HiddenPage() {
   const supabase = await createClient()
@@ -17,70 +15,80 @@ export default async function HiddenPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Gate 1 — does the user have a vault secret? If not, show the setup form.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('privacy_pin_type')
+    .select('vault_secret_type')
     .eq('user_id', user.id)
     .single()
 
-  const pinType = (profile?.privacy_pin_type ?? 'none') as PrivacyPinType
-
-  if (pinType === 'none') {
+  const secretType = (profile?.vault_secret_type ?? null) as SecretType | null
+  if (!secretType) {
     return <VaultSetupScreen />
   }
 
+  // Gate 2 — vault must be open. Otherwise prompt for the secret.
   if (!(await isVaultOpen(user.id))) {
-    return <VaultUnlockScreen pinType={pinType} />
+    return <VaultUnlockScreen secretType={secretType} />
   }
 
-  // Vault is open — fetch the hidden lists.
-  const [{ data: hiddenJournals }, { data: hiddenEntries }] = await Promise.all([
-    supabase
-      .from('journals')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_hidden', true)
-      .is('deleted_at', null)
-      .order('updated_at', { ascending: false }),
-    supabase
-      .from('entries')
-      .select('*, journals!inner(title, color, user_id)')
-      .eq('is_hidden', true)
-      .is('deleted_at', null)
-      .eq('journals.user_id', user.id)
-      .order('entry_date', { ascending: false }),
+  // Both gates passed — fetch hidden surface data via hiddenScope.
+  const scope = await hiddenScope(user.id)
+  const [journals, standaloneEntries] = await Promise.all([
+    scope.journals.list(),
+    scope.entries.standalone(),
   ])
 
-  type RawEntryRow = {
+  // Parent-journal colour + entry tags both keyed off the standalone
+  // entry id list. Tags weren't being loaded before, so the Entries tab
+  // rendered EntryCards with `tags={[]}` — chips never appeared. Pull
+  // them in alongside the parent colours so the rendering matches the
+  // public surface card-for-card.
+  const standaloneIds = standaloneEntries.map((e) => e.entry_id)
+  const standaloneJournalIds = standaloneEntries.map((e) => e.journal_id)
+
+  type EntryTagRow = {
     entry_id: string
-    journal_id: string
-    title: string | null
-    entry_date: string
-    word_count: number
-    is_hidden: boolean
-    is_pinned: boolean
-    content: unknown
-    lock_hash: string | null
-    lock_type: string
-    deleted_at: string | null
-    created_at: string
-    updated_at: string
-    journals: { title: string; color: string; user_id: string } | null
+    tags: { tag_id: string; tag_name: string; color: string } | null
   }
 
-  const entriesFlat = ((hiddenEntries ?? []) as unknown as RawEntryRow[]).map((e) => {
-    const { journals, ...rest } = e
-    return {
-      ...rest,
-      journal_title: journals?.title ?? 'Untitled',
-      journal_color: journals?.color ?? '#1976D2',
-    }
-  }) as Parameters<typeof HiddenView>[0]['entries']
+  const [{ data: parentColours }, { data: rawEntryTags }] = await Promise.all([
+    supabase
+      .from('journals')
+      .select('journal_id, color')
+      .in(
+        'journal_id',
+        standaloneJournalIds.length > 0
+          ? standaloneJournalIds
+          : ['00000000-0000-0000-0000-000000000000'],
+      ),
+    supabase
+      .from('entry_tags')
+      .select('entry_id, tags(tag_id, tag_name, color)')
+      .in(
+        'entry_id',
+        standaloneIds.length > 0 ? standaloneIds : ['00000000-0000-0000-0000-000000000000'],
+      ),
+  ])
 
-  return (
-    <>
-      <LiveDataRefresh />
-      <HiddenView journals={hiddenJournals ?? []} entries={entriesFlat} />
-    </>
-  )
+  const colourByJournal = new Map<string, string>()
+  for (const row of parentColours ?? []) {
+    if (row.color) colourByJournal.set(row.journal_id, row.color)
+  }
+
+  const tagsByEntry = new Map<string, { tag_id: string; tag_name: string; color: string }[]>()
+  for (const row of (rawEntryTags ?? []) as unknown as EntryTagRow[]) {
+    if (!row.tags) continue
+    const list = tagsByEntry.get(row.entry_id) ?? []
+    list.push(row.tags)
+    tagsByEntry.set(row.entry_id, list)
+  }
+
+  const entriesWithColour = standaloneEntries.map((e) => ({
+    ...e,
+    parentJournalColor: colourByJournal.get(e.journal_id) ?? '#1976D2',
+    tags: tagsByEntry.get(e.entry_id) ?? [],
+  }))
+
+  return <HiddenView journals={journals} standaloneEntries={entriesWithColour} />
 }

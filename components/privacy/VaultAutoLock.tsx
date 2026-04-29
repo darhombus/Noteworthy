@@ -1,36 +1,36 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useTransition } from 'react'
 import { usePathname } from 'next/navigation'
-import { lockVault } from '@/lib/actions/privacy'
+import { lockVault } from '@/lib/actions/vault'
 
-// The vault is only allowed to stay open under /hidden/**. All hidden
-// content now lives on dedicated routes (/hidden/journals/<jid>,
-// /hidden/journals/<jid>/entries/<eid>, /hidden/entries/<eid>), so any
-// navigation outside /hidden is a clear signal to lock.
-//
-// The server action is cheap (writes one cookie) and idempotent when no
-// vault is open, so firing on every disallowed route transition is safe.
-function isAllowedPath(pathname: string): boolean {
-  return pathname === '/hidden' || pathname.startsWith('/hidden/')
-}
-
+/**
+ * Mounted once in AppShell. When the user navigates AWAY from /hidden
+ * or any /hidden/** route, fires lockVault() to clear the cookie. The
+ * first mount is skipped so deep-linking into /hidden/<jid> doesn't
+ * race the page through a "you just left" transition.
+ */
 export default function VaultAutoLock() {
   const pathname = usePathname()
-  const prev = useRef<string | null>(null)
+  const wasInHiddenRef = useRef<boolean | null>(null)
+  const [, startTransition] = useTransition()
 
   useEffect(() => {
-    const previous = prev.current
-    prev.current = pathname
+    const inHidden = pathname === '/hidden' || pathname.startsWith('/hidden/')
 
-    // On first mount, don't lock — user may have just landed on /hidden or
-    // deep-linked into a hidden item. Only act on real path transitions.
-    if (previous === null) return
-    if (previous === pathname) return
-
-    if (!isAllowedPath(pathname)) {
-      void lockVault()
+    // Skip first mount — we don't know where the user came from.
+    if (wasInHiddenRef.current === null) {
+      wasInHiddenRef.current = inHidden
+      return
     }
+
+    if (wasInHiddenRef.current && !inHidden) {
+      startTransition(() => {
+        lockVault().catch(() => {/* fire-and-forget */})
+      })
+    }
+
+    wasInHiddenRef.current = inHidden
   }, [pathname])
 
   return null

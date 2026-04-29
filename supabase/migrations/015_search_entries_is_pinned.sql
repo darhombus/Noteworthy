@@ -1,0 +1,79 @@
+-- ============================================================
+-- Noteworthy — restore is_pinned in search_entries() return
+-- Migration: 015_search_entries_is_pinned.sql
+-- ============================================================
+-- Migration 014 dropped is_pinned from the search_entries RETURNS TABLE.
+-- The /api/search route still wants to surface pinned state on hits (so
+-- the SearchOverlay can render a pin badge), so add it back. Pin sort
+-- order is unchanged — the function already orders by e.is_pinned DESC.
+--
+-- Adding a column to a function's RETURNS TABLE counts as a signature
+-- change for PostgREST, so DROP the prior signature first to avoid
+-- ambiguous-overload errors. See feedback memory:
+-- feedback_postgres_function_signature_change.md.
+-- ============================================================
+
+DROP FUNCTION IF EXISTS search_entries(UUID, TEXT, TEXT, UUID, DATE, DATE, BOOLEAN, UUID[]);
+
+CREATE OR REPLACE FUNCTION search_entries(
+  p_user_id    UUID,
+  p_query      TEXT,
+  p_scope      TEXT,                   -- 'public' or 'hidden'. Required.
+  p_journal_id UUID    DEFAULT NULL,
+  p_from       DATE    DEFAULT NULL,
+  p_to         DATE    DEFAULT NULL,
+  p_pinned     BOOLEAN DEFAULT NULL,
+  p_tag_ids    UUID[]  DEFAULT NULL
+)
+RETURNS TABLE (
+  entry_id      UUID,
+  title         TEXT,
+  journal_id    UUID,
+  journal_title TEXT,
+  journal_color TEXT,
+  entry_date    DATE,
+  word_count    INT,
+  is_pinned     BOOLEAN,
+  snippet       TEXT
+)
+LANGUAGE plpgsql STABLE SECURITY INVOKER AS $$
+BEGIN
+  IF p_scope NOT IN ('public', 'hidden') THEN
+    RAISE EXCEPTION 'Invalid scope: %', p_scope;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    e.entry_id,
+    e.title,
+    e.journal_id,
+    j.title AS journal_title,
+    j.color AS journal_color,
+    e.entry_date,
+    e.word_count,
+    e.is_pinned,
+    LEFT(coalesce(e.title,'') || ' ' || coalesce(e.content::TEXT,''), 200) AS snippet
+  FROM entries  e
+  JOIN journals j ON j.journal_id = e.journal_id
+  WHERE j.user_id    = p_user_id
+    AND e.deleted_at IS NULL
+    AND j.deleted_at IS NULL
+    AND CASE p_scope
+          WHEN 'public' THEN (e.is_hidden = FALSE AND j.is_hidden = FALSE)
+          WHEN 'hidden' THEN (e.is_hidden = TRUE  OR  j.is_hidden = TRUE)
+        END
+    AND (p_query IS NULL OR p_query = ''
+         OR to_tsvector('english',
+              coalesce(e.title,'') || ' ' || coalesce(e.content::TEXT,''))
+            @@ plainto_tsquery('english', p_query))
+    AND (p_journal_id IS NULL OR e.journal_id = p_journal_id)
+    AND (p_from   IS NULL OR e.entry_date >= p_from)
+    AND (p_to     IS NULL OR e.entry_date <= p_to)
+    AND (p_pinned IS NULL OR e.is_pinned   = p_pinned)
+    AND (p_tag_ids IS NULL OR EXISTS (
+          SELECT 1 FROM entry_tags et
+           WHERE et.entry_id = e.entry_id AND et.tag_id = ANY(p_tag_ids)))
+  ORDER BY e.is_pinned DESC, e.entry_date DESC
+  LIMIT 20;
+END;
+$$;

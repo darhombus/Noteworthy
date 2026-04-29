@@ -1,98 +1,118 @@
 /**
- * Privacy Vault session — server-only helpers.
- *
- * The Vault is a short-lived cookie that gates `/hidden`. It is independent
- * of Supabase auth (a signed-in user still has to enter their Privacy PIN
- * to open the vault) and independent of the journal/entry lock system
- * (those remain in-page React state). The cookie expires after the user's
- * `autoLockMinutes` preference, same knob as the existing auto-lock.
- *
- * Threat model: identical to the existing lock feature — an app-level
- * privacy layer, not encryption. The PIN stops casual shoulder-surfers,
- * not a motivated attacker with the DB. The cookie signature keeps a
- * user from forging a vault-open state for a different user id.
+ * Vault session — an HMAC-signed httpOnly cookie that says "the user has
+ * proven knowledge of the vault PIN/password and the unlock window has
+ * not yet expired". This file is the only place that mints, reads, or
+ * destroys the cookie. Higher-level code asks `isVaultOpen(userId)` —
+ * never inspects the cookie itself.
  */
+
 import { cookies } from 'next/headers'
 import { createHmac, timingSafeEqual } from 'crypto'
 
-const COOKIE_NAME = 'nw_vault'
-const DEFAULT_MINUTES = 5
+export const VAULT_COOKIE_NAME = 'nw_vault'
+
+interface VaultPayload {
+  /** The user the vault session belongs to. */
+  uid: string
+  /** Unix epoch milliseconds at which this session expires. */
+  exp: number
+}
+
+function getJwtSecret(): string {
+  const s = process.env.VAULT_COOKIE_SECRET
+  if (!s) {
+    throw new Error(
+      'VAULT_COOKIE_SECRET is not set — vault cookies cannot be signed. ' +
+        'Add it to .env.local before unlocking the vault.',
+    )
+  }
+  return s
+}
+
+function b64url(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function fromB64url(s: string): Buffer {
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
+  return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/') + pad, 'base64')
+}
+
+function sign(payload: VaultPayload): string {
+  const body = b64url(Buffer.from(JSON.stringify(payload), 'utf8'))
+  const tag = b64url(createHmac('sha256', getJwtSecret()).update(body).digest())
+  return `${body}.${tag}`
+}
+
+function verify(token: string): VaultPayload | null {
+  const dot = token.indexOf('.')
+  if (dot === -1) return null
+  const body = token.slice(0, dot)
+  const tag = token.slice(dot + 1)
+
+  const expected = createHmac('sha256', getJwtSecret()).update(body).digest()
+  let actual: Buffer
+  try {
+    actual = fromB64url(tag)
+  } catch {
+    return null
+  }
+  if (actual.length !== expected.length) return null
+  if (!timingSafeEqual(actual, expected)) return null
+
+  try {
+    const payload = JSON.parse(fromB64url(body).toString('utf8')) as unknown
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      typeof (payload as VaultPayload).uid === 'string' &&
+      typeof (payload as VaultPayload).exp === 'number'
+    ) {
+      return payload as VaultPayload
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 /**
- * HMAC key — derived from the Supabase anon key so we don't need a new
- * env var. Anon key is available on every server runtime and is a stable
- * per-project secret. Rotating the project's anon key invalidates all
- * outstanding vault cookies, which is the desired behavior.
+ * Open the vault for `minutes` minutes. Overwrites any existing session.
  */
-function getSigningKey(): string {
-  const k = process.env.SUPABASE_JWT_SECRET || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!k) throw new Error('Missing signing key for vault cookie')
-  return k
-}
+export async function openVault(userId: string, minutes: number): Promise<void> {
+  const maxAgeSeconds = Math.max(60, Math.floor(minutes * 60))
+  const exp = Date.now() + maxAgeSeconds * 1000
+  const token = sign({ uid: userId, exp })
 
-function sign(payload: string): string {
-  return createHmac('sha256', getSigningKey()).update(payload).digest('hex')
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ab.length !== bb.length) return false
-  return timingSafeEqual(ab, bb)
-}
-
-function encode(userId: string, expiresAt: number): string {
-  const payload = `${userId}.${expiresAt}`
-  return `${payload}.${sign(payload)}`
-}
-
-function decode(cookie: string): { userId: string; expiresAt: number } | null {
-  const parts = cookie.split('.')
-  if (parts.length !== 3) return null
-  const [userId, expStr, mac] = parts
-  const expiresAt = Number(expStr)
-  if (!Number.isFinite(expiresAt)) return null
-  const expected = sign(`${userId}.${expiresAt}`)
-  if (!safeEqual(expected, mac)) return null
-  return { userId, expiresAt }
-}
-
-/**
- * Open the vault for this user. Writes an httpOnly signed cookie that
- * expires after `minutes` of wall-clock time. Each successful PIN entry
- * refreshes the cookie with a new expiry.
- */
-export async function openVault(userId: string, minutes = DEFAULT_MINUTES): Promise<void> {
-  const effective = Math.max(1, Math.floor(minutes || DEFAULT_MINUTES))
-  const expiresAt = Date.now() + effective * 60 * 1000
   const store = await cookies()
-  store.set(COOKIE_NAME, encode(userId, expiresAt), {
+  store.set(VAULT_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: effective * 60,
+    maxAge: maxAgeSeconds,
   })
 }
 
-export async function closeVault(): Promise<void> {
-  const store = await cookies()
-  store.delete(COOKIE_NAME)
-}
-
 /**
- * Returns true if the vault is open for the given user. Any mismatch
- * (wrong user, bad signature, expired) returns false. Does NOT clear
- * an expired cookie — reading during a Server Component render can't
- * write cookies. The cookie's own maxAge handles browser-side cleanup.
+ * Returns true iff the cookie is present, the HMAC verifies, the userId
+ * matches, and the expiry is in the future.
  */
 export async function isVaultOpen(userId: string): Promise<boolean> {
   const store = await cookies()
-  const raw = store.get(COOKIE_NAME)?.value
+  const raw = store.get(VAULT_COOKIE_NAME)?.value
   if (!raw) return false
-  const decoded = decode(raw)
-  if (!decoded) return false
-  if (decoded.userId !== userId) return false
-  if (decoded.expiresAt <= Date.now()) return false
+  const payload = verify(raw)
+  if (!payload) return false
+  if (payload.uid !== userId) return false
+  if (payload.exp <= Date.now()) return false
   return true
+}
+
+/**
+ * Close the vault by deleting the cookie.
+ */
+export async function closeVault(): Promise<void> {
+  const store = await cookies()
+  store.delete(VAULT_COOKIE_NAME)
 }

@@ -210,3 +210,47 @@
 .ProseMirror ::selection {
   background: color-mix(in srgb, var(--brand) 25%, transparent);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Active sidebar nav row indicator — rendered as an ::after pseudo-element
+   on the link itself. Pseudo-elements are immune to flex layout, so the
+   dot's dimensions cannot be deformed by any sibling/parent flex behavior.
+   Defined here (not as Tailwind classes) so the rules cannot be tree-shaken
+   or reordered out from under us by a class-merging utility.
+   ───────────────────────────────────────────────────────────────────────── */
+.sidebar-nav-active::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  background-color: #6ee7b7;
+  border-radius: 9999px;
+  pointer-events: none;
+  display: block;
+  box-sizing: border-box;
+}
+/* Hide the dot in the icon-only desktop sidebar range (md but not lg). */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .sidebar-nav-active::after {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Vault unlock error shake — applied via .vault-shake on the unlock card
+   when an attempt fails or the rate limiter rejects. Short (300ms) and
+   small in amplitude so it reads as feedback, not a flicker.
+   ───────────────────────────────────────────────────────────────────────── */
+@keyframes vault-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(4px); }
+}
+.vault-shake {
+  animation: vault-shake 300ms ease-in-out;
+}

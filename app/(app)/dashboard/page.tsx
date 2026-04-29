@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { publicScope } from '@/lib/data/scope'
 import LiveDataRefresh from '@/components/LiveDataRefresh'
 import GreetingCard from '@/components/dashboard/GreetingCard'
 import StatsCards from '@/components/dashboard/StatsCards'
@@ -93,78 +94,22 @@ export default async function DashboardPage() {
   firstOfMonth.setDate(1)
   const firstOfMonthStr = firstOfMonth.toISOString().split('T')[0]
 
-  // Pre-fetch hidden journal ids so every entry query can exclude entries
-  // belonging to hidden journals in addition to entries that are hidden
-  // themselves. Stats stay consistent with what the user sees on /journals.
-  const { data: hiddenJournalRows } = await supabase
-    .from('journals')
-    .select('journal_id')
-    .eq('user_id', user.id)
-    .eq('is_hidden', true)
-  const hiddenJournalIdList = `(${(hiddenJournalRows ?? [])
-    .map((r) => r.journal_id)
-    .join(',')})`
-  const hasHiddenJournals = (hiddenJournalRows ?? []).length > 0
+  // The dashboard is a public surface — every fetch goes through publicScope.
+  // entries.listAll() returns every public-visible entry in a single query
+  // so dashboard render time stays constant regardless of journal count.
+  const scope = await publicScope(user.id)
+  const [journals, allEntries] = await Promise.all([
+    scope.journals.list(),
+    scope.entries.listAll(),
+  ])
+  const journalsById = new Map(journals.map((j) => [j.journal_id, j]))
 
-  // Run all fetches in parallel
-  const totalCountQuery = supabase
-    .from('entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_hidden', false)
-    .is('deleted_at', null)
-
-  const monthCountQuery = supabase
-    .from('entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_hidden', false)
-    .is('deleted_at', null)
-    .gte('entry_date', firstOfMonthStr)
-
-  const allDatesQuery = supabase
-    .from('entries')
-    .select('entry_date, created_at')
-    .eq('is_hidden', false)
-    .is('deleted_at', null)
-    .order('entry_date', { ascending: false })
-
-  const recentEntriesQuery = supabase
-    .from('entries')
-    .select('entry_id, title, entry_date, word_count, journal_id, journals(title, color)')
-    .eq('is_hidden', false)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  const [
-    profileResult,
-    totalCountResult,
-    monthCountResult,
-    allDatesResult,
-    recentEntriesResult,
-    topTagResult,
-  ] = await Promise.all([
+  const [profileResult, topTagResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('full_name')
       .eq('user_id', user.id)
       .single(),
-
-    hasHiddenJournals
-      ? totalCountQuery.not('journal_id', 'in', hiddenJournalIdList)
-      : totalCountQuery,
-
-    hasHiddenJournals
-      ? monthCountQuery.not('journal_id', 'in', hiddenJournalIdList)
-      : monthCountQuery,
-
-    hasHiddenJournals
-      ? allDatesQuery.not('journal_id', 'in', hiddenJournalIdList)
-      : allDatesQuery,
-
-    hasHiddenJournals
-      ? recentEntriesQuery.not('journal_id', 'in', hiddenJournalIdList)
-      : recentEntriesQuery,
-
     supabase
       .from('tags')
       .select('tag_name, usage_count')
@@ -176,23 +121,33 @@ export default async function DashboardPage() {
 
   // ---- Derived values ----
   const fullName = profileResult.data?.full_name ?? ''
-  const totalEntries = totalCountResult.count ?? 0
-  const thisMonth = monthCountResult.count ?? 0
 
-  const allDates = (allDatesResult.data ?? []).map((e) => e.entry_date)
+  // Sort entries by entry_date DESC, then created_at DESC, for both the
+  // recent list and the streak/date histograms.
+  const sortedByDate = [...allEntries].sort((a, b) => {
+    if (a.entry_date !== b.entry_date) return a.entry_date < b.entry_date ? 1 : -1
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+  const sortedByCreated = [...allEntries].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )
+
+  const totalEntries = allEntries.length
+  const thisMonth = allEntries.filter((e) => e.entry_date >= firstOfMonthStr).length
+
+  const allDates = sortedByDate.map((e) => e.entry_date)
   const { current: currentStreak, best: bestStreak } = computeStreaks(allDates)
 
-  // Most recent entry's created_at for the "last entry X ago" pill
-  const lastEntryAt = allDatesResult.data?.[0]?.created_at ?? null
+  const lastEntryAt = sortedByCreated[0]?.created_at ?? null
 
   // Week activity
   const weekDays = getCurrentWeekDays()
   const weekStart = weekDays[0].dateStr
   const weekEnd = weekDays[6].dateStr
   const weekDateCounts = new Map<string, number>()
-  for (const row of allDatesResult.data ?? []) {
-    if (row.entry_date >= weekStart && row.entry_date <= weekEnd) {
-      weekDateCounts.set(row.entry_date, (weekDateCounts.get(row.entry_date) ?? 0) + 1)
+  for (const e of allEntries) {
+    if (e.entry_date >= weekStart && e.entry_date <= weekEnd) {
+      weekDateCounts.set(e.entry_date, (weekDateCounts.get(e.entry_date) ?? 0) + 1)
     }
   }
   const thisWeek = [...weekDateCounts.values()].reduce((a, b) => a + b, 0)
@@ -202,17 +157,10 @@ export default async function DashboardPage() {
     count: weekDateCounts.get(d.dateStr) ?? 0,
   }))
 
-  // Recent entries — journals join returns a single object (many-to-one FK)
-  type RawEntry = {
-    entry_id: string
-    title: string | null
-    entry_date: string
-    word_count: number
-    journal_id: string
-    journals: { title: string; color: string } | { title: string; color: string }[] | null
-  }
-  const recentEntries = ((recentEntriesResult.data ?? []) as RawEntry[]).map((e) => {
-    const journal = Array.isArray(e.journals) ? e.journals[0] : e.journals
+  // Recent entries — top 5 by created_at, hydrate journal title/colour from
+  // the same publicScope journals fetched above.
+  const recentEntries = sortedByCreated.slice(0, 5).map((e) => {
+    const journal = journalsById.get(e.journal_id)
     return {
       entryId: e.entry_id,
       title: e.title,

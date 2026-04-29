@@ -7,8 +7,35 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.1"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -22,8 +49,7 @@ export type Database = {
           is_hidden: boolean
           is_pinned: boolean
           journal_id: string
-          lock_hash: string | null
-          lock_type: string
+          search_text: string | null
           title: string | null
           updated_at: string
           word_count: number
@@ -37,8 +63,7 @@ export type Database = {
           is_hidden?: boolean
           is_pinned?: boolean
           journal_id: string
-          lock_hash?: string | null
-          lock_type?: string
+          search_text?: string | null
           title?: string | null
           updated_at?: string
           word_count?: number
@@ -52,8 +77,7 @@ export type Database = {
           is_hidden?: boolean
           is_pinned?: boolean
           journal_id?: string
-          lock_hash?: string | null
-          lock_type?: string
+          search_text?: string | null
           title?: string | null
           updated_at?: string
           word_count?: number
@@ -108,14 +132,12 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           entry_count: number
-          entry_lock_hash: string | null
-          entry_lock_type: string
+          hidden_entry_count: number
+          hidden_word_count: number
           icon: string
           is_favorite: boolean
           is_hidden: boolean
           journal_id: string
-          lock_hash: string | null
-          lock_type: string
           title: string
           total_word_count: number
           updated_at: string
@@ -127,14 +149,12 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           entry_count?: number
-          entry_lock_hash?: string | null
-          entry_lock_type?: string
+          hidden_entry_count?: number
+          hidden_word_count?: number
           icon?: string
           is_favorite?: boolean
           is_hidden?: boolean
           journal_id?: string
-          lock_hash?: string | null
-          lock_type?: string
           title: string
           total_word_count?: number
           updated_at?: string
@@ -146,14 +166,12 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           entry_count?: number
-          entry_lock_hash?: string | null
-          entry_lock_type?: string
+          hidden_entry_count?: number
+          hidden_word_count?: number
           icon?: string
           is_favorite?: boolean
           is_hidden?: boolean
           journal_id?: string
-          lock_hash?: string | null
-          lock_type?: string
           title?: string
           total_word_count?: number
           updated_at?: string
@@ -164,6 +182,7 @@ export type Database = {
       media: {
         Row: {
           alt_text: string | null
+          deleted_at: string | null
           duration: number | null
           entry_id: string
           file_name: string
@@ -173,12 +192,14 @@ export type Database = {
           height: number | null
           media_id: string
           mime_type: string
+          object_path: string | null
           thumbnail_url: string | null
           uploaded_at: string
           width: number | null
         }
         Insert: {
           alt_text?: string | null
+          deleted_at?: string | null
           duration?: number | null
           entry_id: string
           file_name: string
@@ -188,12 +209,14 @@ export type Database = {
           height?: number | null
           media_id?: string
           mime_type: string
+          object_path?: string | null
           thumbnail_url?: string | null
           uploaded_at?: string
           width?: number | null
         }
         Update: {
           alt_text?: string | null
+          deleted_at?: string | null
           duration?: number | null
           entry_id?: string
           file_name?: string
@@ -203,6 +226,7 @@ export type Database = {
           height?: number | null
           media_id?: string
           mime_type?: string
+          object_path?: string | null
           thumbnail_url?: string | null
           uploaded_at?: string
           width?: number | null
@@ -227,6 +251,9 @@ export type Database = {
           privacy_pin_type: string
           updated_at: string
           user_id: string
+          vault_auto_lock_minutes: number
+          vault_secret_hash: string | null
+          vault_secret_type: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -237,6 +264,9 @@ export type Database = {
           privacy_pin_type?: string
           updated_at?: string
           user_id: string
+          vault_auto_lock_minutes?: number
+          vault_secret_hash?: string | null
+          vault_secret_type?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -247,6 +277,9 @@ export type Database = {
           privacy_pin_type?: string
           updated_at?: string
           user_id?: string
+          vault_auto_lock_minutes?: number
+          vault_secret_hash?: string | null
+          vault_secret_type?: string | null
         }
         Relationships: []
       }
@@ -282,6 +315,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      build_prefix_tsquery: { Args: { p_query: string }; Returns: unknown }
       extract_tiptap_text: { Args: { doc: Json }; Returns: string }
       fn_compute_word_count: { Args: { content: Json }; Returns: number }
       search_entries: {
@@ -290,21 +324,43 @@ export type Database = {
           p_journal_id?: string
           p_pinned?: boolean
           p_query: string
+          p_scope: string
           p_tag_ids?: string[]
           p_to?: string
+          p_user_id: string
         }
         Returns: {
-          content: Json
           entry_date: string
           entry_id: string
           is_pinned: boolean
           journal_color: string
           journal_id: string
+          journal_is_hidden: boolean
           journal_title: string
+          snippet: string
+          tags: Json
           title: string
           word_count: number
         }[]
       }
+      search_index_entries: {
+        Args: { p_scope: string; p_user_id: string }
+        Returns: {
+          entry_date: string
+          entry_id: string
+          is_pinned: boolean
+          journal_color: string
+          journal_id: string
+          journal_is_hidden: boolean
+          journal_title: string
+          search_text: string
+          tags: Json
+          title: string
+          word_count: number
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       [_ in never]: never
@@ -433,6 +489,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
