@@ -179,6 +179,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [pinnedOnly, setPinnedOnly] = useState(false)
+  const [favouritesOnly, setFavouritesOnly] = useState(false)
   const [queryTooLong, setQueryTooLong] = useState(false)
 
   const accent = journal.color ?? '#1976D2'
@@ -239,14 +240,15 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         ),
       )
     }
-    if (pinnedOnly) result = result.filter((e) => e.is_pinned)
-    if (fromDate)   result = result.filter((e) => e.entry_date >= fromDate)
-    if (toDate)     result = result.filter((e) => e.entry_date <= toDate)
+    if (pinnedOnly)     result = result.filter((e) => e.is_pinned)
+    if (favouritesOnly) result = result.filter((e) => e.is_favorite)
+    if (fromDate)       result = result.filter((e) => e.entry_date >= fromDate)
+    if (toDate)         result = result.filter((e) => e.entry_date <= toDate)
 
     return result
   // liveTagNames is a fresh array each render — depend on its serialised form
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, isTagFilterActive, liveTagNames.join(','), pinnedOnly, fromDate, toDate])
+  }, [entries, isTagFilterActive, liveTagNames.join(','), pinnedOnly, favouritesOnly, fromDate, toDate])
 
   // Client-side text-search results. Splits the query into words so a
   // multi-word query "lov morn" matches "loving morning" without needing
@@ -277,6 +279,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     setFromDate('')
     setToDate('')
     setPinnedOnly(false)
+    setFavouritesOnly(false)
   }
 
   function setDatePreset(preset: 'today' | 'week' | 'month' | 'year') {
@@ -329,7 +332,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     }))
   }
 
-  const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly)
+  const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly || favouritesOnly)
   const hasActiveFilters = hasDatePinFilters || liveTagNames.length > 0
   const isAnyClientFilterActive = isTagFilterActive || hasDatePinFilters
   const showSearchEmpty = isTextSearchActive && searchResults.length === 0 && !queryTooLong
@@ -498,6 +501,18 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             >
               Pinned only
             </button>
+
+            {/* Favourites only */}
+            <button
+              onClick={() => setFavouritesOnly((v) => !v)}
+              className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
+                favouritesOnly
+                  ? 'bg-[#1976D2] text-white border-[#1976D2]'
+                  : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
+              }`}
+            >
+              Favourites only
+            </button>
           </div>
         </div>
 
@@ -510,6 +525,9 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             {toDate && <FilterChip label={`To: ${toDate}`} onRemove={() => setToDate('')} />}
             {pinnedOnly && (
               <FilterChip label="Pinned" onRemove={() => setPinnedOnly(false)} />
+            )}
+            {favouritesOnly && (
+              <FilterChip label="Favourites" onRemove={() => setFavouritesOnly(false)} />
             )}
             {liveTagNames.map((name) => (
               <FilterChip
@@ -645,10 +663,14 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           ) : (
             <div className="flex flex-col gap-3">
               {(() => {
-                const latestEntry = filteredEntries.reduce<typeof filteredEntries[0] | null>((a, b) => {
+                // "Last edited" = the most recently edited entry in the
+                // *whole* journal, not just the filtered slice. If the real
+                // most-recent entry is filtered out, no card gets the badge.
+                // Pin/favourite/hide flips no longer touch updated_at
+                // (migration 024), so the badge is stable across those.
+                const latestEntry = entries.reduce<typeof entries[0] | null>((a, b) => {
                   if (!a) return b
-                  if (a.entry_date !== b.entry_date) return a.entry_date > b.entry_date ? a : b
-                  return new Date(a.created_at).getTime() >= new Date(b.created_at).getTime() ? a : b
+                  return new Date(a.updated_at).getTime() >= new Date(b.updated_at).getTime() ? a : b
                 }, null)
                 return filteredEntries.map((entry) => (
                   <EntryCard

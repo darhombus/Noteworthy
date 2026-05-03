@@ -36,6 +36,7 @@ interface IndexEntry {
   entry_date: string
   word_count: number
   is_pinned: boolean
+  is_favorite: boolean
   search_text: string
   tags: Array<{ tag_id: string; tag_name: string; color: string }>
 }
@@ -102,6 +103,7 @@ export async function GET(request: NextRequest) {
     entry_date: string
     word_count: number
     is_pinned: boolean
+    is_favorite: boolean
     search_text: string | null
     tags: Array<{ tag_id: string; tag_name: string; color: string }> | null
   }
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
     entry_date: row.entry_date,
     word_count: row.word_count,
     is_pinned: row.is_pinned,
+    is_favorite: row.is_favorite,
     search_text: row.search_text ?? '',
     tags: Array.isArray(row.tags) ? row.tags : [],
   }))

@@ -3,7 +3,16 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, SearchX, X, BookOpen, FileText, Lock } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import {
+  format,
+  parseISO,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+} from 'date-fns'
 import { toast } from 'sonner'
 import { useUIStore } from '@/store/useUIStore'
 import TagChip from '@/components/ui/TagChip'
@@ -28,6 +37,7 @@ interface IndexEntry {
   entry_date: string
   word_count: number
   is_pinned: boolean
+  is_favorite: boolean
   /** Full lower-cased haystack (title + plain Tiptap text from the
    *  generated `search_text` column). Pre-lowered once at index load
    *  so per-keystroke filtering is just `.includes(query)`. */
@@ -69,6 +79,7 @@ interface SnapshotResponse {
     entry_date: string
     word_count: number
     is_pinned: boolean
+    is_favorite: boolean
     search_text: string
     tags: Tag[]
   }>
@@ -204,7 +215,7 @@ export default function SearchOverlay() {
   const [query, setQuery] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [pinnedOnly, setPinnedOnly] = useState(false)
+  const [favouritesOnly, setFavouritesOnly] = useState(false)
 
   // Tags loaded once for #tag → ID lookup. Resolved at runtime against
   // the snapshot, since the snapshot embeds tags per entry already.
@@ -297,6 +308,7 @@ export default function SearchOverlay() {
           entry_date: e.entry_date,
           word_count: e.word_count,
           is_pinned: e.is_pinned,
+          is_favorite: e.is_favorite,
           haystack: (e.search_text ?? '').toLowerCase(),
           text: e.search_text ?? '',
           tags: Array.isArray(e.tags) ? e.tags : [],
@@ -376,7 +388,12 @@ export default function SearchOverlay() {
   const queryLower = liveText.trim().toLowerCase()
   const queryWords = queryLower.split(/\s+/).filter(Boolean)
 
-  const hasActiveFilters = !!(fromDate || toDate || pinnedOnly || liveTagNames.length > 0)
+  const hasActiveFilters = !!(
+    fromDate ||
+    toDate ||
+    favouritesOnly ||
+    liveTagNames.length > 0
+  )
 
   // Stable serialisations so the memos below don't re-run when the array
   // identity changes but the contents don't.
@@ -405,7 +422,7 @@ export default function SearchOverlay() {
   // Reset highlighted result when filters change
   useEffect(() => {
     setSelectedIndex(-1)
-  }, [query, fromDate, toDate, pinnedOnly])
+  }, [query, fromDate, toDate, favouritesOnly])
 
   // ── Derived results — synchronous filter against the snapshot ─────────────
   const { filteredJournals, filteredEntries } = useMemo<{
@@ -417,20 +434,22 @@ export default function SearchOverlay() {
     const hasText = queryLower.length > 0
     const hasTagFilter = liveTagNames.length > 0
 
-    if (!hasText && !hasTagFilter && !fromDate && !toDate && !pinnedOnly) {
+    if (!hasText && !hasTagFilter && !fromDate && !toDate && !favouritesOnly) {
       return { filteredJournals: [], filteredEntries: [] }
     }
 
-    // Journals — only matched on text. The Cmd+K overlay never offered a
-    // tag/date filter for the Journals section, so preserve that.
+    // Journals — match on text (when supplied) and apply Favourites
+    // only filter. Date/pinned/tag filters are entry-level concepts
+    // and don't apply here. Showing the Journals section even with no
+    // text lets a user list all favourite journals via the chip alone.
     let journals: IndexJournal[] = []
-    if (hasText) {
-      journals = snapshot.journals.filter((j) =>
-        queryWords.every((w) => j.haystack.includes(w)),
-      )
-      // pinned/favourite journals first, then most-recently-updated. The
-      // updated_at field isn't in the snapshot — preserve favourite-first
-      // and rely on the order the route gave us for the rest.
+    const journalFilterActive = hasText || favouritesOnly
+    if (journalFilterActive) {
+      journals = snapshot.journals.filter((j) => {
+        if (favouritesOnly && !j.is_favorite) return false
+        if (hasText && !queryWords.every((w) => j.haystack.includes(w))) return false
+        return true
+      })
       journals.sort((a, b) => {
         if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
         return 0
@@ -438,12 +457,12 @@ export default function SearchOverlay() {
       journals = journals.slice(0, 5)
     }
 
-    // Entries — apply text + tag + date + pinned filters.
+    // Entries — apply text + tag + date + pinned + favourites filters.
     const entries: IndexEntry[] = []
     for (const e of snapshot.entries) {
       if (hasText && !queryWords.every((w) => e.haystack.includes(w))) continue
       if (hasTagFilter && !e.tags.some((t) => liveTagIds.has(t.tag_id))) continue
-      if (pinnedOnly && !e.is_pinned) continue
+      if (favouritesOnly && !e.is_favorite) continue
       if (fromDate && e.entry_date < fromDate) continue
       if (toDate && e.entry_date > toDate) continue
       entries.push(e)
@@ -460,12 +479,16 @@ export default function SearchOverlay() {
     liveTagIds,
     fromDate,
     toDate,
-    pinnedOnly,
+    favouritesOnly,
     queryTooLong,
   ])
 
   const totalItems = filteredJournals.length + filteredEntries.length
-  const showZeroQuery = queryLower.length === 0 && liveTagNames.length === 0
+  // Anything that should produce results: text, tags, or any filter chip.
+  const isAnyFilterActive =
+    queryLower.length > 0 || liveTagNames.length > 0 || hasActiveFilters
+  // Show the welcome prompt only when the user hasn't typed or set any filter.
+  const showZeroQuery = !isAnyFilterActive
   // Show "no results" only when (a) the user has actually typed/filtered
   // AND (b) the snapshot has loaded — otherwise we'd flash "no results"
   // for the brief moment between mount and the prefetch landing.
@@ -473,7 +496,7 @@ export default function SearchOverlay() {
     !vaultLocked &&
     snapshot !== null &&
     totalItems === 0 &&
-    (queryLower.length > 0 || liveTagNames.length > 0)
+    isAnyFilterActive
   // Snapshot is still in flight after the user has typed. Common path
   // is the very first hidden-surface search after a vault unlock —
   // fetchSnapshot dropped the previous (locked) snapshot and the new
@@ -483,14 +506,14 @@ export default function SearchOverlay() {
     !vaultLocked &&
     snapshot === null &&
     !snapshotError &&
-    (queryLower.length > 0 || liveTagNames.length > 0)
+    isAnyFilterActive
 
   function handleClose() {
     closeSearch()
     setQuery('')
     setFromDate('')
     setToDate('')
-    setPinnedOnly(false)
+    setFavouritesOnly(false)
     setQueryTooLong(false)
     setSelectedIndex(-1)
     // Keep the snapshot — prefetch already paid for it and the next
@@ -521,6 +544,44 @@ export default function SearchOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [router, surface],
   )
+
+  // Date preset ranges (Today / This week / This month / This year).
+  // Computed once per render — not memoized because the four-call cost
+  // is trivial and date-fns has no React-friendly invalidation hook.
+  // weekStartsOn matches EntryList's in-journal preset for visual
+  // consistency between the two search surfaces.
+  const datePresets = (() => {
+    const now = new Date()
+    const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
+    return {
+      today: { from: fmt(now), to: fmt(now) },
+      week: {
+        from: fmt(startOfWeek(now, { weekStartsOn: 1 })),
+        to: fmt(endOfWeek(now, { weekStartsOn: 1 })),
+      },
+      month: { from: fmt(startOfMonth(now)), to: fmt(endOfMonth(now)) },
+      year: { from: fmt(startOfYear(now)), to: fmt(endOfYear(now)) },
+    } as const
+  })()
+
+  const presetLabels = {
+    today: 'Today',
+    week: 'This week',
+    month: 'This month',
+    year: 'This year',
+  } as const
+
+  function applyDatePreset(preset: keyof typeof datePresets) {
+    const { from, to } = datePresets[preset]
+    if (fromDate === from && toDate === to) {
+      // Clicking an active preset clears the range.
+      setFromDate('')
+      setToDate('')
+      return
+    }
+    setFromDate(from)
+    setToDate(to)
+  }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -586,41 +647,62 @@ export default function SearchOverlay() {
           </p>
         )}
 
-        {/* Filter row — date and pinned */}
-        <div className="flex items-center flex-wrap gap-2 px-4 py-2.5 border-b border-[var(--border)]">
-          {/* From date */}
-          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <span>From</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-            />
-          </label>
+        {/* Filter row — mirrors the in-journal EntryList layout. Wraps to
+            multiple lines on narrow widths instead of scrolling horizontally. */}
+        <div className="flex items-center flex-wrap gap-1.5 px-4 py-2.5 border-b border-[var(--border)]">
+          <span className="text-xs text-[var(--text-secondary)] mr-0.5">Date:</span>
+          {(['today', 'week', 'month', 'year'] as const).map((preset) => {
+            const isActive =
+              fromDate === datePresets[preset].from && toDate === datePresets[preset].to
+            return (
+              <button
+                key={preset}
+                onClick={() => applyDatePreset(preset)}
+                className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
+                  isActive
+                    ? 'bg-[#1976D2] text-white border-[#1976D2]'
+                    : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
+                }`}
+              >
+                {presetLabels[preset]}
+              </button>
+            )
+          })}
 
-          {/* To date */}
-          <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-            <span>To</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-            />
-          </label>
+          <span className="text-[var(--border)] select-none">|</span>
 
-          {/* Pinned only */}
           <button
-            onClick={() => setPinnedOnly((v) => !v)}
+            onClick={() => setFavouritesOnly((v) => !v)}
             className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
-              pinnedOnly
+              favouritesOnly
                 ? 'bg-[#1976D2] text-white border-[#1976D2]'
                 : 'bg-transparent text-[var(--text-secondary)] border-[var(--border)] hover:border-[#1976D2] hover:text-[#1976D2]'
             }`}
           >
-            Pinned only
+            Favourites only
           </button>
+
+          {/* From + To kept together so they wrap to the next line as a pair. */}
+          <div className="flex items-center gap-1.5">
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <span>From</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+              <span>To</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="text-xs text-[var(--text-primary)] bg-[var(--bg-muted)] border border-[var(--border)] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
+              />
+            </label>
+          </div>
         </div>
 
         {/* Active filter chips */}
@@ -630,8 +712,8 @@ export default function SearchOverlay() {
               <FilterChip label={`From: ${fromDate}`} onRemove={() => setFromDate('')} />
             )}
             {toDate && <FilterChip label={`To: ${toDate}`} onRemove={() => setToDate('')} />}
-            {pinnedOnly && (
-              <FilterChip label="Pinned" onRemove={() => setPinnedOnly(false)} />
+            {favouritesOnly && (
+              <FilterChip label="Favourites" onRemove={() => setFavouritesOnly(false)} />
             )}
             {liveTagNames.map((name) => (
               <FilterChip
@@ -661,13 +743,6 @@ export default function SearchOverlay() {
           {!vaultLocked && showZeroQuery && !hasActiveFilters && (
             <p className="text-center text-sm text-[var(--text-muted)] py-10">
               Search journals, entries, and content…
-            </p>
-          )}
-
-          {/* Date/pinned filters active but no text and no tag pattern */}
-          {!vaultLocked && showZeroQuery && hasActiveFilters && (
-            <p className="text-center text-sm text-[var(--text-muted)] py-10">
-              Type a search term to apply filters…
             </p>
           )}
 

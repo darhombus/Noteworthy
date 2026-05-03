@@ -85,7 +85,7 @@ export default function SignupPage() {
               <input
                 {...register('fullName')}
                 type="text"
-                placeholder="Jane Doe"
+                placeholder="Your name"
                 autoComplete="name"
                 className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
               />

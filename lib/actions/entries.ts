@@ -181,3 +181,25 @@ export async function togglePin(
   revalidatePath('/hidden', 'layout')
   return { success: true }
 }
+
+export async function toggleEntryFavourite(
+  id: string,
+  currentValue: boolean,
+): Promise<{ success: true } | { error: string }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { error } = await supabase
+    .from('entries')
+    .update({ is_favorite: !currentValue })
+    .eq('entry_id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/journals', 'layout')
+  revalidatePath('/hidden', 'layout')
+  return { success: true }
+}

@@ -162,7 +162,8 @@ async function listPublicEntriesInPublicJournal(
     .eq('is_hidden', false)
     .is('deleted_at', null)
     .order('is_pinned', { ascending: false })
-    .order('entry_date', { ascending: false })
+    .order('pinned_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
@@ -224,7 +225,8 @@ async function listHiddenSurfaceEntriesInJournal(
     .eq('journal_id', journalId)
     .is('deleted_at', null)
     .order('is_pinned', { ascending: false })
-    .order('entry_date', { ascending: false })
+    .order('pinned_at', { ascending: false, nullsFirst: false })
+    .order('updated_at', { ascending: false })
 
   // Belt-and-braces: even when the journal is hidden, the rule "this row
   // should be visible to the hidden surface" must hold per row.

@@ -46,9 +46,11 @@ export type Database = {
           deleted_at: string | null
           entry_date: string
           entry_id: string
+          is_favorite: boolean
           is_hidden: boolean
           is_pinned: boolean
           journal_id: string
+          pinned_at: string | null
           search_text: string | null
           title: string | null
           updated_at: string
@@ -60,9 +62,11 @@ export type Database = {
           deleted_at?: string | null
           entry_date?: string
           entry_id?: string
+          is_favorite?: boolean
           is_hidden?: boolean
           is_pinned?: boolean
           journal_id: string
+          pinned_at?: string | null
           search_text?: string | null
           title?: string | null
           updated_at?: string
@@ -74,9 +78,11 @@ export type Database = {
           deleted_at?: string | null
           entry_date?: string
           entry_id?: string
+          is_favorite?: boolean
           is_hidden?: boolean
           is_pinned?: boolean
           journal_id?: string
+          pinned_at?: string | null
           search_text?: string | null
           title?: string | null
           updated_at?: string
@@ -348,6 +354,7 @@ export type Database = {
         Returns: {
           entry_date: string
           entry_id: string
+          is_favorite: boolean
           is_pinned: boolean
           journal_color: string
           journal_id: string

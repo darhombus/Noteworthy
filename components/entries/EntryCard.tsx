@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Calendar, MoreHorizontal, Pin, EyeOff, Eye } from 'lucide-react'
+import { Calendar, MoreHorizontal, Pin, EyeOff, Eye, Star, Trash2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
-import { togglePin } from '@/lib/actions/entries'
+import { togglePin, toggleEntryFavourite } from '@/lib/actions/entries'
 import { hideEntry, unhideEntry } from '@/lib/actions/vault'
 import { useSurface } from '@/lib/surface'
 import { entryHref } from '@/lib/utils/href'
@@ -59,6 +59,7 @@ export default function EntryCard({
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [isPinned, setIsPinned] = useState(entry.is_pinned)
+  const [isFav, setIsFav] = useState(entry.is_favorite)
   const [menuOpen, setMenuOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -94,6 +95,18 @@ export default function EntryCard({
     if ('error' in result) {
       setIsPinned(prev)
       toast.error('Failed to update pin')
+    } else {
+      router.refresh()
+    }
+  }
+
+  async function handleFavToggle() {
+    const prev = isFav
+    setIsFav(!prev)
+    const result = await toggleEntryFavourite(entry.entry_id, prev)
+    if ('error' in result) {
+      setIsFav(prev)
+      toast.error('Failed to update favourite')
     } else {
       router.refresh()
     }
@@ -233,7 +246,7 @@ export default function EntryCard({
                 letterSpacing: '0.4px',
               }}
             >
-              Latest
+              Last edited
             </span>
           )}
 
@@ -294,33 +307,49 @@ export default function EntryCard({
         <div
           ref={dropdownRef}
           style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 9999 }}
-          className="w-36 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1"
+          className="w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           <button
+            onClick={() => { setMenuOpen(false); handleFavToggle() }}
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+          >
+            <Star
+              size={14}
+              className={isFav ? 'fill-amber-400 text-amber-400 shrink-0' : 'text-[#9E9E9E] shrink-0'}
+            />
+            <span>{isFav ? 'Remove favourite' : 'Add to favourites'}</span>
+          </button>
+
+          <button
             onClick={() => { setMenuOpen(false); handlePinToggle() }}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
             <Pin
-              size={13}
-              className={isPinned ? 'fill-[#1976D2] text-[#1976D2]' : 'text-[#9E9E9E]'}
+              size={14}
+              className={isPinned ? 'fill-[#1976D2] text-[#1976D2] shrink-0' : 'text-[#9E9E9E] shrink-0'}
             />
-            {isPinned ? 'Unpin' : 'Pin'}
+            <span>{isPinned ? 'Unpin entry' : 'Pin entry'}</span>
           </button>
+
           <button
             onClick={() => { setMenuOpen(false); handleHideToggle() }}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
           >
             {surface === 'hidden'
-              ? <Eye size={13} className="text-[#9E9E9E]" />
-              : <EyeOff size={13} className="text-[#9E9E9E]" />}
-            {surface === 'hidden' ? 'Unhide' : 'Hide'}
+              ? <Eye size={14} className="text-[#9E9E9E] shrink-0" />
+              : <EyeOff size={14} className="text-[#9E9E9E] shrink-0" />}
+            <span>{surface === 'hidden' ? 'Unhide entry' : 'Hide entry'}</span>
           </button>
+
+          <div className="my-1 border-t border-[var(--border)]" />
+
           <button
             onClick={() => { setMenuOpen(false); onDelete(entry) }}
-            className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-[var(--bg-muted)] transition-colors"
+            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
           >
-            Delete
+            <Trash2 size={14} className="shrink-0" />
+            <span>Delete entry</span>
           </button>
         </div>,
         document.body,
