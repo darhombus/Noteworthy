@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 
 interface Props {
@@ -12,6 +12,12 @@ export default function ClearAllModal({ onConfirm, onCancel }: Props) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
   const isValid = input === 'CLEAR ALL'
 
   async function handleConfirm() {
@@ -22,7 +28,10 @@ export default function ClearAllModal({ onConfirm, onCancel }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel() }}
+    >
       <div className="w-full max-w-md rounded-xl border border-[#E0E0E0] bg-white shadow-lg dark:border-[#3A3A3A] dark:bg-[#1E1E1E]">
         <div className="flex items-start justify-between p-6">
           <h2 className="text-lg font-semibold text-[#212121] dark:text-[#F5F5F5]">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { mergeTags } from '@/lib/actions/tags'
@@ -32,6 +32,12 @@ export default function MergeTagModal({
   const [destinationId, setDestinationId] = useState('')
   const [isMerging, setIsMerging] = useState(false)
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   const destination = allTags.find((t) => t.tag_id === destinationId)
 
   async function handleMerge() {
@@ -56,7 +62,7 @@ export default function MergeTagModal({
       aria-labelledby="merge-modal-title"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/50" onMouseDown={onClose} aria-hidden="true" />
 
       {/* Card */}
       <div className="relative w-full max-w-md bg-[var(--bg-surface)] rounded-xl shadow-2xl border border-[var(--border)] p-6">

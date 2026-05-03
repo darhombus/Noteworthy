@@ -9,6 +9,11 @@ interface UIState {
   isSearchOpen: boolean
   openSearch: () => void
   closeSearch: () => void
+  // True while the Hidden surface is showing its locked gate (unlock or
+  // setup screen). TopBar reads this to suppress the "Search vault"
+  // affordance — searching makes no sense before the vault is open.
+  hiddenVaultLocked: boolean
+  setHiddenVaultLocked: (locked: boolean) => void
   // Profile data — synced from server on mount, updatable by settings
   profileName: string
   profileAvatarUrl: string | null
@@ -31,6 +36,8 @@ export const useUIStore = create<UIState>((set) => ({
   isSearchOpen: false,
   openSearch: () => set({ isSearchOpen: true }),
   closeSearch: () => set({ isSearchOpen: false }),
+  hiddenVaultLocked: false,
+  setHiddenVaultLocked: (locked) => set({ hiddenVaultLocked: locked }),
   profileName: '',
   profileAvatarUrl: null,
   setProfileName: (name) => set({ profileName: name }),

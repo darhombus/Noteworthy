@@ -616,7 +616,7 @@ export default function SearchOverlay() {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
+        onMouseDown={handleClose}
         aria-hidden="true"
       />
 

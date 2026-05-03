@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -28,6 +28,12 @@ export default function ChangeVaultModal({ currentSecretType, onClose }: Props) 
 
   const nextRef = useRef<SecretInputHandle>(null)
   const confirmRef = useRef<SecretInputHandle>(null)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   function validate(): string | null {
     if (!current) return 'Enter your current PIN or password'
@@ -63,7 +69,7 @@ export default function ChangeVaultModal({ currentSecretType, onClose }: Props) 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-white dark:bg-[#1E1E1E] rounded-xl shadow-xl w-full max-w-md border border-[#E0E0E0] dark:border-slate-700">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E0E0E0] dark:border-slate-700">

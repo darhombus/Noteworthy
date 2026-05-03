@@ -59,6 +59,18 @@ export default function InactivityModal() {
     startInactivityTimer()
   }, [clearAll, startInactivityTimer])
 
+  // Dismissing the modal (Escape or backdrop click) is itself a clear sign
+  // the user is back at the keyboard — treat it the same as "Stay logged in"
+  // rather than letting the countdown finish and log them out.
+  useEffect(() => {
+    if (!showModal) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleStayLoggedIn()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [showModal, handleStayLoggedIn])
+
   useEffect(() => {
     const onActivity = () => startInactivityTimer()
 
@@ -76,7 +88,10 @@ export default function InactivityModal() {
   if (!showModal) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) handleStayLoggedIn() }}
+    >
       <div className="w-full max-w-sm mx-4 bg-[var(--bg-surface)] rounded-xl shadow-lg border border-[var(--border)] p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
           Still there?

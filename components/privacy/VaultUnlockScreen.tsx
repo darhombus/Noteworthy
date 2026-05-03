@@ -6,6 +6,7 @@ import { Lock, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import SecretInput, { type SecretInputHandle } from '@/components/lock/SecretInput'
 import { unlockVault } from '@/lib/actions/vault'
+import { useUIStore } from '@/store/useUIStore'
 
 interface Props {
   secretType: 'pin' | 'password'
@@ -20,6 +21,14 @@ export default function VaultUnlockScreen({ secretType }: Props) {
   const [cooldownSeconds, setCooldownSeconds] = useState(0)
   const [pending, startTransition] = useTransition()
   const inputRef = useRef<SecretInputHandle>(null)
+  const setHiddenVaultLocked = useUIStore((s) => s.setHiddenVaultLocked)
+
+  // Mark the surface as locked so TopBar suppresses its "Search vault"
+  // affordance — there's no vault content to search until we unlock.
+  useEffect(() => {
+    setHiddenVaultLocked(true)
+    return () => setHiddenVaultLocked(false)
+  }, [setHiddenVaultLocked])
 
   // Tick down the cooldown countdown from the server. The server is the
   // source of truth — this UI counter just tells the user when they can

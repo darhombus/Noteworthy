@@ -237,6 +237,14 @@ export default function EntryCard({
             {entry.title || 'Untitled'}
           </h3>
 
+          {isPinned && (
+            <Pin
+              size={12}
+              className="shrink-0 fill-[#1976D2] text-[#1976D2]"
+              aria-label="Pinned"
+            />
+          )}
+
           {isLatest && (
             <span
               className="shrink-0 text-[10px] font-bold px-[9px] py-0.5 rounded-full uppercase"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -30,6 +30,12 @@ export default function DeleteEntryModal({
   const surface = useSurface()
   const [isDeleting, setIsDeleting] = useState(false)
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   async function handleDelete() {
     setIsDeleting(true)
 
@@ -51,7 +57,7 @@ export default function DeleteEntryModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="bg-[var(--bg-surface)] rounded-xl shadow-xl w-full max-w-sm border border-[var(--border)]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">

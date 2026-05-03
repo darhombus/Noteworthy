@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -35,6 +35,12 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   const isEdit = !!journal
 
   const [colorOpen, setColorOpen] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const {
     register,
@@ -91,9 +97,7 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/45 backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
         className="bg-[var(--bg-surface)] rounded-[20px] w-full max-w-[480px] overflow-hidden font-[Inter,sans-serif] max-h-[90vh] flex flex-col"

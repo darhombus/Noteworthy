@@ -73,6 +73,7 @@ export default function TopBar() {
   const setCreateJournalOpen = useUIStore((s) => s.setCreateJournalOpen)
   const openSearch = useUIStore((s) => s.openSearch)
   const breadcrumbTitles = useUIStore((s) => s.breadcrumbTitles)
+  const hiddenVaultLocked = useUIStore((s) => s.hiddenVaultLocked)
 
   const crumbs = buildCrumbs(pathname, breadcrumbTitles)
 
@@ -142,16 +143,34 @@ export default function TopBar() {
       {/* Right actions */}
       <div className="flex items-center gap-2">
         {inHidden ? (
-          <button
-            onClick={openSearch}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
-            aria-label="Search vault (Ctrl+K)"
-            title="Search vault"
-          >
-            <Lock size={14} />
-            <Search size={15} />
-            <span className="hidden sm:inline">Search vault</span>
-          </button>
+          hiddenVaultLocked ? (
+            // The Hidden surface gets a vault-scoped Search button — but
+            // only once the vault is open. While the unlock/setup gate is
+            // showing we hide the button, but render an invisible spacer
+            // with the same dimensions so the bar keeps the same height
+            // as every other surface.
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden="true"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-transparent text-sm font-medium invisible pointer-events-none"
+            >
+              <Lock size={14} />
+              <Search size={15} />
+              <span className="hidden sm:inline">Search vault</span>
+            </button>
+          ) : (
+            <button
+              onClick={openSearch}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+              aria-label="Search vault (Ctrl+K)"
+              title="Search vault"
+            >
+              <Lock size={14} />
+              <Search size={15} />
+              <span className="hidden sm:inline">Search vault</span>
+            </button>
+          )
         ) : (
           <>
             <button

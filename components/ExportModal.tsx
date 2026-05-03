@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSurface } from '@/lib/surface'
@@ -22,6 +22,12 @@ export default function ExportModal({ scope, entryId, journalId, onClose }: Expo
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const showDateRange = scope === 'journal' || scope === 'all'
 
@@ -76,7 +82,7 @@ export default function ExportModal({ scope, entryId, journalId, onClose }: Expo
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40"
-        onClick={onClose}
+        onMouseDown={onClose}
         aria-hidden="true"
       />
 

@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Shield, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import SecretInput, { type SecretInputHandle } from '@/components/lock/SecretInput'
 import { setVaultSecret } from '@/lib/actions/vault'
+import { useUIStore } from '@/store/useUIStore'
 
 type SecretType = 'pin' | 'password'
 
@@ -19,6 +20,14 @@ export default function VaultSetupScreen() {
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const confirmRef = useRef<SecretInputHandle>(null)
+  const setHiddenVaultLocked = useUIStore((s) => s.setHiddenVaultLocked)
+
+  // Suppress TopBar's "Search vault" button while the vault doesn't exist
+  // yet — there's nothing to search until setup is complete.
+  useEffect(() => {
+    setHiddenVaultLocked(true)
+    return () => setHiddenVaultLocked(false)
+  }, [setHiddenVaultLocked])
 
   function validate(): string | null {
     if (secretType === 'pin') {
