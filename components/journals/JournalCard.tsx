@@ -185,6 +185,16 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
             )}
           </div>
 
+          {/* Favourite indicator — sits beside the meatball, mirroring
+              the pin indicator placement on EntryCard */}
+          {isFav && (
+            <Star
+              size={13}
+              className="shrink-0 fill-amber-400 text-amber-400 mt-2"
+              aria-label="Favourite"
+            />
+          )}
+
           {/* More menu trigger */}
           <div className="shrink-0">
             <button

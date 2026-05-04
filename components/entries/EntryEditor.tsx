@@ -49,10 +49,15 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   const surface = useSurface()
 
   // Read the stored doc once. `isTiptapDoc` mirrors the DB CHECK constraint,
-  // so anything that somehow slipped through falls back to an empty doc.
-  const initialContent: TiptapDoc = isTiptapDoc(entry.content)
-    ? entry.content
-    : EMPTY_TIPTAP_DOC
+  // so anything that somehow slipped through falls back to an empty doc. We
+  // also fall back when the doc is structurally valid but has zero children
+  // (`content: []`): without that, Tiptap's TrailingNode plugin would insert
+  // a paragraph on first focus and trigger a phantom save (see
+  // memory/feedback_setEditable_emit_update.md).
+  const initialContent: TiptapDoc =
+    isTiptapDoc(entry.content) && entry.content.content.length > 0
+      ? entry.content
+      : EMPTY_TIPTAP_DOC
 
   const [title, setTitle] = useState(entry.title ?? '')
   const [content, setContent] = useState<TiptapDoc>(initialContent)
@@ -134,9 +139,16 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   // Flip Tiptap's editable flag whenever the user toggles read mode. The
   // editor is created with `editable: true` by default, so we only need to
   // push updates — `setEditable` no-ops when the value matches.
+  //
+  // Pass `emitUpdate: false`. Tiptap's setEditable defaults to firing a
+  // synthetic 'update' event even when the doc didn't change (see Editor.ts
+  // in @tiptap/core). On mount with editable=true, that fake update flowed
+  // through onUpdate → setContent and flipped autosave to 'pending' for an
+  // untouched entry — the user would see "Save failed" and a conflict modal
+  // without ever typing.
   useEffect(() => {
     if (!editor) return
-    editor.setEditable(!isReadOnly)
+    editor.setEditable(!isReadOnly, false)
   }, [editor, isReadOnly])
 
   const {
@@ -170,9 +182,10 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   // "Discard and reload" button.
   const applyRemoteRow = useCallback(
     (newRow: Entry) => {
-      const newDoc: TiptapDoc = isTiptapDoc(newRow.content)
-        ? (newRow.content as TiptapDoc)
-        : EMPTY_TIPTAP_DOC
+      const newDoc: TiptapDoc =
+        isTiptapDoc(newRow.content) && (newRow.content as TiptapDoc).content.length > 0
+          ? (newRow.content as TiptapDoc)
+          : EMPTY_TIPTAP_DOC
       const newTitle = newRow.title ?? ''
       const newDate = newRow.entry_date
 
@@ -196,13 +209,24 @@ export default function EntryEditor({ entry, journal, initialTags }: EntryEditor
   )
 
   useEntryRealtime(entry.entry_id, (newRow) => {
-    // Filter echoes of our own saves — the server broadcasts every UPDATE and
-    // we already applied this timestamp locally when the save succeeded.
+    // Ignore realtime entirely while a save is in flight. The Postgres UPDATE
+    // is broadcast on the realtime channel the moment the row is written, but
+    // the Server Action's response (which carries the same updated_at) races
+    // it back to this tab on a different network path. If the realtime event
+    // wins, getServerUpdatedAt() still points at the pre-save timestamp and
+    // the strict equality echo filter below misses our own save — we'd then
+    // fire a phantom conflict dialog for an UPDATE that's literally ours.
+    // The Server Action does its own server-side conflict check (clientUpdatedAt
+    // vs current.updated_at) and returns {conflict:true} authoritatively if a
+    // foreign tab beat us, so dropping realtime during 'saving' is safe.
+    if (saveStatusRef.current === 'saving') return
+
+    // Filter echoes of our own saves — after the action response lands,
+    // getServerUpdatedAt() == the broadcast updated_at and we can short-circuit.
     if (newRow.updated_at === getServerUpdatedAt()) return
 
     const isDirty =
       saveStatusRef.current === 'pending' ||
-      saveStatusRef.current === 'saving' ||
       saveStatusRef.current === 'error'
 
     if (isDirty) {

@@ -48,15 +48,19 @@ export function useAutoSave({
   const serverUpdatedAtRef = useRef(serverUpdatedAt)
   const latestContentRef = useRef(content)
   const saveStatusRef = useRef<SaveStatus>('idle')
-  const isInitialContentRender = useRef(true)
-  const isInitialDebounceRender = useRef(true)
   // Stringified snapshot of the content payload that matches what the server
-  // currently has (set after a successful save or after accepting a remote
-  // update via realtime). Used to short-circuit the pending flip and the
-  // debounced save when local content equals server content — without this,
-  // a realtime-driven apply would immediately fire a redundant UPDATE that
-  // echoes back to the other tab and triggers a ping-pong loop.
+  // currently has. Initialised on first render to the *initial* content so
+  // that mount is a no-op (no spurious 'pending' flip, no spurious save) —
+  // this also makes the hook strict-mode safe, where useEffect runs twice on
+  // mount and a one-shot `isInitial` ref guard would let the second run
+  // through. After a successful save, or after accepting a remote update via
+  // realtime, the ref is updated to the new server-truth so the equality
+  // check below short-circuits redundant writes (which would otherwise echo
+  // back through realtime and ping-pong between tabs).
   const syncedContentKeyRef = useRef<string | null>(null)
+  if (syncedContentKeyRef.current === null) {
+    syncedContentKeyRef.current = JSON.stringify(content)
+  }
 
   // Always keep latest content in ref so forceSave/saveNow can use it
   useEffect(() => {
@@ -117,21 +121,18 @@ export function useAutoSave({
 
   const debouncedContent = useDebounce(content, 3000)
 
-  // Set 'pending' immediately when content changes (before debounce fires)
+  // Set 'pending' immediately when content changes (before debounce fires).
+  // The synced-content equality check below also covers the initial mount
+  // (and the strict-mode double-mount): syncedContentKeyRef is seeded with
+  // the first content payload, so mount is a no-op until the user actually
+  // edits something.
   useEffect(() => {
-    if (isInitialContentRender.current) {
-      isInitialContentRender.current = false
-      return
-    }
     if (!entryId) return
     // Only the idle/saved states can flip to pending — in any other state
     // setSaveStatus below is a no-op, so skip the stringify on hot keystroke
     // paths (pending → pending).
     const prevStatus = saveStatusRef.current
     if (prevStatus !== 'idle' && prevStatus !== 'saved') return
-    // If the content matches what we know the server has, stay clean. This is
-    // the case right after a successful save, or right after applying a remote
-    // update via realtime.
     if (
       syncedContentKeyRef.current !== null &&
       JSON.stringify(content) === syncedContentKeyRef.current
@@ -141,24 +142,24 @@ export function useAutoSave({
     setSaveStatus('pending')
   }, [content, entryId])
 
-  // Perform save when debounced value settles
+  // Perform save when debounced value settles.
   useEffect(() => {
-    if (isInitialDebounceRender.current) {
-      isInitialDebounceRender.current = false
-      return
-    }
     if (!entryId) return
 
     let cancelled = false
 
     async function doSave() {
       // Bail if the content already matches what the server has — avoids a
-      // redundant UPDATE that would echo back through realtime and loop.
+      // redundant UPDATE that would echo back through realtime and loop, and
+      // also makes the initial mount (and strict-mode double-mount) a no-op.
       if (
         syncedContentKeyRef.current !== null &&
         JSON.stringify(latestContentRef.current) === syncedContentKeyRef.current
       ) {
-        setSaveStatus('saved')
+        // Don't flip to 'saved' if we never flipped to 'pending' — that would
+        // briefly flash the green "Saved" indicator on mount with nothing
+        // having actually been saved.
+        if (saveStatusRef.current === 'pending') setSaveStatus('saved')
         return
       }
       setSaveStatus('saving')

@@ -76,7 +76,13 @@ export function useTiptapEditor({ initialContent, onChange }: UseTiptapEditorArg
       ImageNode.configure({ inline: false, allowBase64: false }),
       VideoNode,
     ],
-    content: isTiptapDoc(initialContent) ? initialContent : EMPTY_TIPTAP_DOC,
+    // Fall back to the canonical empty doc (which now contains a single
+    // empty paragraph) when initialContent is structurally invalid OR when
+    // it's a valid-but-empty doc — see EMPTY_TIPTAP_DOC docstring for why.
+    content:
+      isTiptapDoc(initialContent) && initialContent.content.length > 0
+        ? initialContent
+        : EMPTY_TIPTAP_DOC,
     // Required for Next.js SSR: defer initial render until client mount so
     // server and client HTML match.
     immediatelyRender: false,

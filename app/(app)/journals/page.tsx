@@ -17,16 +17,10 @@ export default async function JournalsPage() {
   const scope = await publicScope(user.id)
   const journals = await scope.journals.list()
 
-  // Re-sort with favourites first to match the original card grid order.
-  const sorted = [...journals].sort((a, b) => {
-    if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  })
-
   return (
     <>
       <LiveDataRefresh />
-      <JournalGrid journals={sorted} />
+      <JournalGrid journals={journals} />
     </>
   )
 }

@@ -29,8 +29,24 @@ export interface TiptapDoc {
   content: TiptapNode[]
 }
 
-/** Canonical empty document. Use this anywhere you need a default. */
-export const EMPTY_TIPTAP_DOC: TiptapDoc = { type: 'doc', content: [] }
+/**
+ * Canonical empty document. Use this anywhere you need a default.
+ *
+ * Includes a single empty paragraph rather than `content: []`. Reason: Tiptap's
+ * `TrailingNode` plugin (auto-included by StarterKit) registers an
+ * `appendTransaction` that fires on the *first* dispatched transaction —
+ * including the selection-only one ProseMirror sends when the user clicks into
+ * the editor — and inserts a paragraph at the doc's end if the last child
+ * isn't already one. For a `content: []` doc that produces a real `docChanged`
+ * transaction → an `update` event → the autosave thinks the user typed
+ * something and writes a phantom save. Pre-populating the paragraph makes
+ * first-focus a no-op and keeps `editor.getJSON()` byte-identical to what we
+ * stored.
+ */
+export const EMPTY_TIPTAP_DOC: TiptapDoc = {
+  type: 'doc',
+  content: [{ type: 'paragraph' }],
+}
 
 /** Runtime guard mirroring the database CHECK constraint. */
 export function isTiptapDoc(value: unknown): value is TiptapDoc {

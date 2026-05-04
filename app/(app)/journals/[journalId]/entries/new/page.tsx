@@ -26,12 +26,21 @@ export default async function NewEntryPage({ params }: NewEntryPageProps) {
 
   const today = new Date().toISOString().split('T')[0]
 
+  // Seed the doc with a single empty paragraph rather than relying on the
+  // bare `{type:'doc',content:[]}` default. ProseMirror's StarterKit schema
+  // requires `doc` to contain `block+` (at least one block node), so without
+  // a paragraph the very first click into the editor would dispatch a real
+  // transaction inserting one — that fires Tiptap's `update` event, flips
+  // autosave to 'pending', and writes back a paragraph the user never typed.
+  // Pre-populating it makes mount + first focus a true no-op.
+  const seedContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+
   const { data: entry, error } = await supabase
     .from('entries')
     .insert({
       journal_id: journalId,
       entry_date: today,
-      content: [] as unknown as Json,
+      content: seedContent as unknown as Json,
     })
     .select('entry_id')
     .single()
