@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { X, BookOpen, ChevronDown, Palette } from 'lucide-react'
+import { X, BookOpen, Lock, ChevronDown, Palette } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { createJournal, updateJournal } from '@/lib/actions/journals'
@@ -26,9 +26,19 @@ interface JournalModalProps {
   journal?: Journal
   onClose: () => void
   onSuccess: () => void
+  /** When true on a create flow, the new journal is created with
+   *  is_hidden = true and the modal copy reflects that context. The user
+   *  is never shown a checkbox — entering the modal from the Hidden page
+   *  implies the choice. Ignored on edit. */
+  defaultHidden?: boolean
 }
 
-export default function JournalModal({ journal, onClose, onSuccess }: JournalModalProps) {
+export default function JournalModal({
+  journal,
+  onClose,
+  onSuccess,
+  defaultHidden = false,
+}: JournalModalProps) {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -83,13 +93,30 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
       return
     }
 
-    const created = await createJournal(data)
+    const created = await createJournal({ ...data, is_hidden: defaultHidden || undefined })
     if ('error' in created) {
+      // The dedicated `no_vault:` error (from createJournal when is_hidden=true)
+      // gives the user a one-tap path back to the vault setup screen instead
+      // of a dead-end toast.
+      if (created.error.startsWith('no_vault')) {
+        toast.error('Set up your vault first', {
+          action: {
+            label: 'Set up',
+            onClick: () => router.push('/hidden'),
+          },
+          actionButtonStyle: {
+            background: '#1976D2',
+            color: '#FFFFFF',
+            fontWeight: 600,
+          },
+        })
+        return
+      }
       toast.error(created.error)
       return
     }
 
-    toast.success('Journal created')
+    toast.success(defaultHidden ? 'Hidden journal created' : 'Journal created')
     router.refresh()
     onSuccess()
   }
@@ -116,17 +143,27 @@ export default function JournalModal({ journal, onClose, onSuccess }: JournalMod
               boxShadow: '0 4px 10px rgba(25,118,210,0.3)',
             }}
           >
-            <BookOpen size={17} color="#fff" />
+            {!isEdit && defaultHidden ? (
+              <Lock size={16} color="#fff" />
+            ) : (
+              <BookOpen size={17} color="#fff" />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <h2
               className="text-base font-bold text-[var(--text-primary)] leading-tight"
               style={{ letterSpacing: '-0.3px' }}
             >
-              {isEdit ? 'Edit Journal' : 'Create New Journal'}
+              {isEdit
+                ? 'Edit Journal'
+                : defaultHidden
+                  ? 'New Hidden Journal'
+                  : 'Create New Journal'}
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              A journal holds your entries &amp; notes
+              {!isEdit && defaultHidden
+                ? 'Stays in your vault until you unhide it'
+                : 'A journal holds your entries & notes'}
             </p>
           </div>
           <button

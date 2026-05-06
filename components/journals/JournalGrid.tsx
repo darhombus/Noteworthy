@@ -1,75 +1,35 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { BookOpen, Star, ArrowDownAZ, Clock, RefreshCw } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { BookOpen, Star } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
 import type { Database } from '@/types/supabase'
 import JournalCard from './JournalCard'
 import JournalModal from './JournalModal'
 import DeleteJournalModal from './DeleteJournalModal'
+import JournalSortSelector, {
+  applyJournalSort,
+  readPersistedSort,
+  type JournalSortOption,
+} from './JournalSortSelector'
 
 type Journal = Database['public']['Tables']['journals']['Row']
-type SortOption = 'updated' | 'newest' | 'favourites' | 'az'
-
-const SORT_OPTIONS: { value: SortOption; label: string; icon: React.ReactNode }[] = [
-  { value: 'updated', label: 'Updated', icon: <RefreshCw size={12} /> },
-  { value: 'newest', label: 'Newest', icon: <Clock size={12} /> },
-  { value: 'favourites', label: 'Favourites', icon: <Star size={12} /> },
-  { value: 'az', label: 'A–Z', icon: <ArrowDownAZ size={12} /> },
-]
 
 const STORAGE_KEY = 'noteworthy:journalSort'
-
-function applySort(journals: Journal[], sort: SortOption): Journal[] {
-  // 'favourites' is a filter, not a sort — keep only favourited journals
-  // and order them by most-recently updated.
-  if (sort === 'favourites') {
-    return journals
-      .filter((j) => j.is_favorite)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-  }
-  return [...journals].sort((a, b) => {
-    switch (sort) {
-      case 'az':
-        return a.title.localeCompare(b.title)
-      case 'newest':
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      case 'updated':
-        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    }
-  })
-}
 
 interface JournalGridProps {
   journals: Journal[]
 }
 
 export default function JournalGrid({ journals }: JournalGridProps) {
-  const [sort, setSort] = useState<SortOption>('updated')
+  const [sort, setSort] = useState<JournalSortOption>(
+    () => readPersistedSort(STORAGE_KEY) ?? 'updated',
+  )
   const [editJournal, setEditJournal] = useState<Journal | null>(null)
   const [deleteJournal, setDeleteJournal] = useState<Journal | null>(null)
   const { createJournalOpen, setCreateJournalOpen } = useUIStore()
 
-  // Restore persisted sort preference on mount. 'favourites' is a filter,
-  // not a sort the user likely wants to land on after a refresh, so we skip
-  // restoring it and fall back to the 'updated' default.
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as SortOption | null
-    if (saved && saved !== 'favourites' && SORT_OPTIONS.some((o) => o.value === saved)) {
-      setSort(saved)
-    }
-  }, [])
-
-  function handleSort(value: SortOption) {
-    setSort(value)
-    if (value === 'favourites') {
-      localStorage.removeItem(STORAGE_KEY)
-    } else {
-      localStorage.setItem(STORAGE_KEY, value)
-    }
-  }
-
-  const sorted = useMemo(() => applySort(journals, sort), [journals, sort])
+  const sorted = useMemo(() => applyJournalSort(journals, sort), [journals, sort])
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto">
@@ -83,24 +43,7 @@ export default function JournalGrid({ journals }: JournalGridProps) {
           </p>
         </div>
 
-        {/* Sort toggle group */}
-        <div className="flex items-center gap-0.5 p-0.5 bg-[var(--bg-muted)] border border-[var(--border)] rounded-xl">
-          {SORT_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              onClick={() => handleSort(o.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-xs font-medium transition-all ${
-                sort === o.value
-                  ? 'bg-[var(--bg-surface)] text-[#1976D2] shadow-sm border border-[var(--border)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-              aria-pressed={sort === o.value}
-            >
-              {o.icon}
-              {o.label}
-            </button>
-          ))}
-        </div>
+        <JournalSortSelector value={sort} onChange={setSort} storageKey={STORAGE_KEY} />
       </div>
 
       {/* Empty state */}

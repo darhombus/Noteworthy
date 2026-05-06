@@ -4,7 +4,8 @@ import { hiddenScope } from '@/lib/data/scope'
 import { isVaultOpen } from '@/lib/privacy/vault'
 import VaultSetupScreen from '@/components/privacy/VaultSetupScreen'
 import VaultUnlockScreen from '@/components/privacy/VaultUnlockScreen'
-import HiddenView from '@/components/privacy/HiddenView'
+import HiddenGrid from '@/components/hidden/HiddenGrid'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 type SecretType = 'pin' | 'password'
 
@@ -33,62 +34,24 @@ export default async function HiddenPage() {
   }
 
   // Both gates passed — fetch hidden surface data via hiddenScope.
+  // The grid surfaces:
+  //   1. Hidden journals (all rows where journals.is_hidden=true)
+  //   2. The synthetic SystemJournalCard, iff there's at least one entry
+  //      with entry.is_hidden=true AND parent_journal.is_hidden=false.
   const scope = await hiddenScope(user.id)
   const [journals, standaloneEntries] = await Promise.all([
     scope.journals.list(),
     scope.entries.standalone(),
   ])
 
-  // Parent-journal colour + entry tags both keyed off the standalone
-  // entry id list. Tags weren't being loaded before, so the Entries tab
-  // rendered EntryCards with `tags={[]}` — chips never appeared. Pull
-  // them in alongside the parent colours so the rendering matches the
-  // public surface card-for-card.
-  const standaloneIds = standaloneEntries.map((e) => e.entry_id)
-  const standaloneJournalIds = standaloneEntries.map((e) => e.journal_id)
-
-  type EntryTagRow = {
-    entry_id: string
-    tags: { tag_id: string; tag_name: string; color: string } | null
-  }
-
-  const [{ data: parentColours }, { data: rawEntryTags }] = await Promise.all([
-    supabase
-      .from('journals')
-      .select('journal_id, color')
-      .in(
-        'journal_id',
-        standaloneJournalIds.length > 0
-          ? standaloneJournalIds
-          : ['00000000-0000-0000-0000-000000000000'],
-      ),
-    supabase
-      .from('entry_tags')
-      .select('entry_id, tags(tag_id, tag_name, color)')
-      .in(
-        'entry_id',
-        standaloneIds.length > 0 ? standaloneIds : ['00000000-0000-0000-0000-000000000000'],
-      ),
-  ])
-
-  const colourByJournal = new Map<string, string>()
-  for (const row of parentColours ?? []) {
-    if (row.color) colourByJournal.set(row.journal_id, row.color)
-  }
-
-  const tagsByEntry = new Map<string, { tag_id: string; tag_name: string; color: string }[]>()
-  for (const row of (rawEntryTags ?? []) as unknown as EntryTagRow[]) {
-    if (!row.tags) continue
-    const list = tagsByEntry.get(row.entry_id) ?? []
-    list.push(row.tags)
-    tagsByEntry.set(row.entry_id, list)
-  }
-
-  const entriesWithColour = standaloneEntries.map((e) => ({
-    ...e,
-    parentJournalColor: colourByJournal.get(e.journal_id) ?? '#1976D2',
-    tags: tagsByEntry.get(e.entry_id) ?? [],
-  }))
-
-  return <HiddenView journals={journals} standaloneEntries={entriesWithColour} />
+  return (
+    <>
+      <LiveDataRefresh />
+      <HiddenGrid
+        hiddenJournals={journals}
+        hasStandaloneHiddenEntries={standaloneEntries.length > 0}
+        standaloneHiddenEntryCount={standaloneEntries.length}
+      />
+    </>
+  )
 }

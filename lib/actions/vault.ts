@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import bcrypt from 'bcryptjs'
 import { createClient } from '@/lib/supabase/server'
 import { closeVault, isVaultOpen, openVault } from '@/lib/privacy/vault'
+import { closeBinReveal, openBinReveal } from '@/lib/privacy/binReveal'
 
 type SecretType = 'pin' | 'password'
 type ActionResult = { success: true } | { error: string }
@@ -282,6 +283,9 @@ export async function unlockVault(secret: string): Promise<UnlockResult> {
 
   clearUnlockAttempts(userId)
   await openVault(userId, profile.vault_auto_lock_minutes)
+  // /recycle-bin uses its own bin-reveal cookie now, so opening the
+  // vault doesn't need to invalidate the bin's SSR cache. Revealing
+  // titles in the bin is a separate `revealBin` action.
   revalidatePath('/hidden')
   return { success: true }
 }
@@ -289,6 +293,83 @@ export async function unlockVault(secret: string): Promise<UnlockResult> {
 export async function lockVault(): Promise<ActionResult> {
   await closeVault()
   revalidatePath('/hidden')
+  return { success: true }
+}
+
+// ---------------------------------------------------------------------------
+// Recycle-bin reveal — separate from the vault session
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the user's vault secret and open a *bin-reveal* session.
+ * Does NOT touch the actual vault cookie — `/hidden` still requires
+ * a real `unlockVault` to access. The bin-reveal cookie only lifts
+ * the redaction on the recycle-bin listing.
+ *
+ * Reuses the same rate limiter as `unlockVault` so a brute-force
+ * attempt against the bin-reveal endpoint can't dodge the cooldown
+ * by alternating with vault unlock attempts.
+ */
+export async function revealBin(secret: string): Promise<UnlockResult> {
+  const userId = await requireUserId()
+
+  const limit = checkRateLimit(userId)
+  if (!limit.ok) {
+    return {
+      error: `Too many attempts. Try again in ${limit.retryAfterSeconds}s`,
+      retryAfterSeconds: limit.retryAfterSeconds,
+    }
+  }
+
+  const profile = await loadVaultProfile(userId)
+  if ('error' in profile) return profile
+  if (!profile.vault_secret_type || !profile.vault_secret_hash) {
+    return { error: 'No vault secret set' }
+  }
+
+  const ok = await bcrypt.compare(secret, profile.vault_secret_hash)
+  if (!ok) {
+    recordFailedUnlock(userId)
+    return { error: 'Incorrect PIN or password' }
+  }
+
+  clearUnlockAttempts(userId)
+  await openBinReveal(userId, profile.vault_auto_lock_minutes)
+  revalidatePath('/recycle-bin')
+  return { success: true }
+}
+
+/**
+ * Close the bin-reveal session. Independent of the vault — this does
+ * not lock /hidden access if the vault is also open.
+ */
+export async function hideBin(): Promise<ActionResult> {
+  await closeBinReveal()
+  revalidatePath('/recycle-bin')
+  return { success: true }
+}
+
+/**
+ * Refresh the vault cookie's expiry to "now + auto-lock minutes".
+ *
+ * Called by the client `VaultIdleGuard` on user activity so the unlock
+ * window slides forward as long as the user is interacting with the
+ * tab. Returns `vault_locked` if the cookie has already expired or was
+ * never present — the caller should redirect to /hidden in that case.
+ *
+ * The cookie's `exp` is the source of truth for "is the vault open?"
+ * — every server-side guard reads it via `isVaultOpen()` — so a fresh
+ * touch is the only way to extend the unlock window without forcing
+ * the user to re-enter their secret.
+ */
+export async function touchVault(): Promise<ActionResult> {
+  const userId = await requireUserId()
+  if (!(await isVaultOpen(userId))) return { error: 'vault_locked' }
+
+  const profile = await loadVaultProfile(userId)
+  if ('error' in profile) return profile
+
+  await openVault(userId, profile.vault_auto_lock_minutes)
   return { success: true }
 }
 
@@ -335,9 +416,24 @@ export async function hideJournal(journalId: string): Promise<ActionResult> {
     .eq('user_id', userId)
   if (error) return { error: error.message }
 
+  // Hiding/unhiding mutates the *visible* set on every public surface
+  // that aggregates entries or tags — Tags, Dashboard, Analytics, and
+  // Recycle Bin. Without revalidating each one their SSR caches would
+  // briefly show a tag/entry that just left the public scope, which
+  // looks like a privacy leak even though the underlying data is
+  // correct.
+  invalidatePublicSurfaces()
+  return { success: true }
+}
+
+function invalidatePublicSurfaces() {
   revalidatePath('/journals')
   revalidatePath('/hidden')
-  return { success: true }
+  revalidatePath('/hidden/standalone')
+  revalidatePath('/tags')
+  revalidatePath('/dashboard')
+  revalidatePath('/analytics')
+  revalidatePath('/recycle-bin')
 }
 
 export async function hideEntry(entryId: string): Promise<ActionResult> {
@@ -350,6 +446,29 @@ export async function hideEntry(entryId: string): Promise<ActionResult> {
   }
 
   const supabase = await createClient()
+
+  // Reject hide-from-inside-a-hidden-journal at the action layer too.
+  // Per the model rules, an entry inside a hidden journal cannot be
+  // individually hidden — the journal-level flag is already covering it,
+  // and recording another flag would silently leave the entry hidden
+  // after its parent is later unhidden. The UI never offers this path,
+  // but the server enforces it as a safety net.
+  type ParentRow = {
+    journals: { user_id: string; is_hidden: boolean } | null
+  }
+  const { data: parent, error: parentError } = await supabase
+    .from('entries')
+    .select('journals!inner(user_id, is_hidden)')
+    .eq('entry_id', entryId)
+    .maybeSingle<ParentRow>()
+  if (parentError) return { error: parentError.message }
+  if (!parent?.journals || parent.journals.user_id !== userId) {
+    return { error: 'Entry not found' }
+  }
+  if (parent.journals.is_hidden) {
+    return { error: 'Cannot hide an entry inside a hidden journal.' }
+  }
+
   // RLS scopes the update to entries the user owns; the explicit eq on
   // entry_id keeps the write to a single row.
   const { error } = await supabase
@@ -358,8 +477,7 @@ export async function hideEntry(entryId: string): Promise<ActionResult> {
     .eq('entry_id', entryId)
   if (error) return { error: error.message }
 
-  revalidatePath('/journals')
-  revalidatePath('/hidden')
+  invalidatePublicSurfaces()
   return { success: true }
 }
 
@@ -375,8 +493,7 @@ export async function unhideJournal(journalId: string): Promise<ActionResult> {
     .eq('user_id', userId)
   if (error) return { error: error.message }
 
-  revalidatePath('/journals')
-  revalidatePath('/hidden')
+  invalidatePublicSurfaces()
   return { success: true }
 }
 
@@ -391,7 +508,6 @@ export async function unhideEntry(entryId: string): Promise<ActionResult> {
     .eq('entry_id', entryId)
   if (error) return { error: error.message }
 
-  revalidatePath('/journals')
-  revalidatePath('/hidden')
+  invalidatePublicSurfaces()
   return { success: true }
 }

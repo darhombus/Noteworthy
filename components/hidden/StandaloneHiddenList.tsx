@@ -1,30 +1,31 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { PenLine, BookOpen, Loader2, Calendar, Search, SearchX, X } from 'lucide-react'
-import { format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
-import { useTheme } from 'next-themes'
-import { toast } from 'sonner'
-import { createEntry } from '@/lib/actions/entries'
-import { useSurface } from '@/lib/surface'
+import {
+  ArrowLeft,
+  Search,
+  SearchX,
+  X,
+} from 'lucide-react'
+import {
+  format,
+  parseISO,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+} from 'date-fns'
+import EntryCard from '@/components/entries/EntryCard'
+import DeleteEntryModal from '@/components/entries/DeleteEntryModal'
 import { entryHref } from '@/lib/utils/href'
-
-/** Convert a 6-digit hex color + 2-char hex opacity to rgba() to avoid
- *  browser normalisation causing SSR/client hydration mismatches. */
-function hexAlpha(hex: string, alpha: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${(parseInt(alpha, 16) / 255).toFixed(3)})`
-}
-import BookIcon from '@/components/ui/BookIcon'
-import EntryCard from './EntryCard'
-import DeleteEntryModal from './DeleteEntryModal'
+import { useSurface } from '@/lib/surface'
 import type { Database } from '@/types/supabase'
 
-type EntryBase = Database['public']['Tables']['entries']['Row']
-type Journal = Database['public']['Tables']['journals']['Row']
+type EntryRow = Database['public']['Tables']['entries']['Row']
 
 interface EntryTag {
   tag_id: string
@@ -32,24 +33,14 @@ interface EntryTag {
   color: string
 }
 
-type Entry = EntryBase & { tags?: EntryTag[] }
-
-interface EntryListProps {
-  journal: Journal
-  entries: Entry[]
+export interface StandaloneHiddenEntry extends EntryRow {
+  parentJournalTitle: string
+  parentJournalColor: string
+  tags: EntryTag[]
 }
 
-/** Hidden-journal pages set this so EntryCards inside know to suppress
- *  their per-entry hide/unhide menu and surface the asterisk indicator
- *  for entries whose own is_hidden flag is also set (model rule: an entry
- *  inside a hidden journal cannot be individually hidden, but a flag
- *  predating the journal's hide is preserved and signalled visually). */
-
 interface SearchResult {
-  entry: Entry
-  /** Lower-cased haystack used to find/match the query — derived from the
-   *  entry's `search_text` (or title fallback). Snippet centring uses
-   *  this same string so highlights line up exactly. */
+  entry: StandaloneHiddenEntry
   haystack: string
   snippet: string
   matchedTerms: string[]
@@ -147,10 +138,6 @@ function removeHashTag(query: string, tagName: string): string {
     .trim()
 }
 
-/** Cut a snippet centred on the first match, with ellipses when we're not
- *  at the boundaries. Mirrors the server's `LEFT(search_text, 200)` shape
- *  when no match is found, so the highlight component still has something
- *  to render for tag/date-only filtering. */
 function buildSnippet(haystack: string, queryLower: string): string {
   if (!haystack) return ''
   const SNIPPET_LEN = 200
@@ -169,23 +156,20 @@ function buildSnippet(haystack: string, queryLower: string): string {
   return snippet
 }
 
-export default function EntryList({ journal, entries }: EntryListProps) {
-  // Derived once: pages that pass a hidden journal automatically opt
-  // every EntryCard into the hidden-journal context — there's no caller
-  // who'd want a different combination, and it keeps the prop surface
-  // narrow.
-  const contextIsHiddenJournal = journal.is_hidden
+interface Props {
+  entries: StandaloneHiddenEntry[]
+}
+
+/** Read-only listing of every entry where entry.is_hidden=true and the
+ *  parent journal is public. Mirrors the public per-journal entry list
+ *  search/filter UI exactly: date presets, custom range, pinned-only,
+ *  favourites-only, and #tag tokens — driven by the entries' embedded
+ *  tags so a brand-new tag matches without a separate /api/tags load. */
+export default function StandaloneHiddenList({ entries }: Props) {
   const router = useRouter()
   const surface = useSurface()
-  const { resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<Entry | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<EntryRow | null>(null)
 
-  // Search state — fully client-side. Every entry on this page already
-  // arrived from the server with `search_text` (the materialized
-  // generated column from migration 020) prefilled, so filtering is just
-  // an in-memory string scan. No fetch, no debounce, no spinner.
   const [searchQuery, setSearchQuery] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -193,46 +177,29 @@ export default function EntryList({ journal, entries }: EntryListProps) {
   const [favouritesOnly, setFavouritesOnly] = useState(false)
   const [queryTooLong, setQueryTooLong] = useState(false)
 
-  const accent = journal.color ?? '#1976D2'
-
-  useEffect(() => { setMounted(true) }, [])
-
-  const isDark = mounted && resolvedTheme === 'dark'
-
-  const lastUpdated = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(journal.updated_at))
-
-  // Pre-compute, for every entry, the lower-cased match haystack (title
-  // + plain Tiptap text from the generated search_text column) AND the
-  // body-only preview text used for the snippet. Splitting them means
-  // searches still match against the title, but the snippet rendered
-  // back to the user mirrors the regular EntryCard preview — body text
-  // only, never duplicating the heading shown directly above it.
+  // Pre-compute, for every entry, the lower-cased match haystack
+  // (title + plain text + parent-journal title) AND the body-only
+  // preview text used for the snippet.
   const entryHaystacks = useMemo(() => {
     const map = new Map<string, { match: string; body: string }>()
     for (const e of entries) {
-      // Include tag names in the match haystack so a plain-text query
-      // (no `#`) finds an entry by tag — covers freshly-created tags
-      // and matches the natural "search for tagname" expectation.
+      // Match haystack includes title, body, parent journal title, and
+      // tag names — so a plain-text query finds an entry by tag (covers
+      // brand-new tags) just like the public per-journal search.
       const tagText = (e.tags ?? []).map((t) => t.tag_name).join(' ')
-      const baseText =
-        (e.search_text ?? `${e.title ?? ''}`) + (tagText ? ' ' + tagText : '')
-      const match = baseText.toLowerCase()
-      // search_text is `coalesce(title,'') || ' ' || extract_tiptap_text(content)`.
-      // Strip exactly that prefix so the snippet contains body text only.
+      const baseMatch =
+        (e.search_text ?? `${e.title ?? ''}`).toLowerCase() +
+        ' ' +
+        e.parentJournalTitle.toLowerCase() +
+        (tagText ? ' ' + tagText.toLowerCase() : '')
       const titlePrefix = `${e.title ?? ''} `
       const raw = e.search_text ?? ''
       const body = raw.startsWith(titlePrefix) ? raw.slice(titlePrefix.length) : raw
-      map.set(e.entry_id, { match, body })
+      map.set(e.entry_id, { match: baseMatch, body })
     }
     return map
   }, [entries])
 
-  // Derive text and tag patterns from the live query — debouncing isn't
-  // needed when filtering happens locally with no network in play.
   const { text: queryText, tagNames: liveTagNames } = parseHashTags(searchQuery)
   const queryLower = queryText.trim().toLowerCase()
   const isTextSearchActive = queryLower.length > 0
@@ -246,9 +213,19 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     }
   }, [queryText, queryTooLong])
 
-  // Apply tag/date/pinned filters first — these are reused by both modes.
+  // Stable sort: pinned first, then most-recently updated.
+  const sortedEntries = useMemo(() => {
+    const out = [...entries]
+    out.sort((a, b) => {
+      if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    })
+    return out
+  }, [entries])
+
+  // Apply tag/date/pinned/favourites filters first.
   const filteredEntries = useMemo(() => {
-    let result = entries
+    let result = sortedEntries
 
     if (isTagFilterActive) {
       result = result.filter((e) =>
@@ -263,14 +240,9 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     if (toDate)         result = result.filter((e) => e.entry_date <= toDate)
 
     return result
-  // liveTagNames is a fresh array each render — depend on its serialised form
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, isTagFilterActive, liveTagNames.join(','), pinnedOnly, favouritesOnly, fromDate, toDate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedEntries, isTagFilterActive, liveTagNames.join(','), pinnedOnly, favouritesOnly, fromDate, toDate])
 
-  // Client-side text-search results. Splits the query into words so a
-  // multi-word query "lov morn" matches "loving morning" without needing
-  // them adjacent. Cap at 50 results so a no-op query against a huge
-  // journal doesn't pay rendering cost it doesn't need.
   const searchResults: SearchResult[] = useMemo(() => {
     if (!isTextSearchActive || queryTooLong) return []
     const words = queryLower.split(/\s+/).filter(Boolean)
@@ -278,12 +250,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     for (const e of filteredEntries) {
       const indexed = entryHaystacks.get(e.entry_id)
       if (!indexed) continue
-      // require every word to appear somewhere in the match haystack
-      // (title + body) so title-only matches still surface.
       if (!words.every((w) => indexed.match.includes(w))) continue
-      // Snippet centres on the first body match. If the only match is in
-      // the title, fall back to the body's leading slice rather than the
-      // title text — the title is already shown above the snippet.
       const snippet = buildSnippet(indexed.body, words[0] ?? '')
       out.push({ entry: e, haystack: indexed.match, snippet, matchedTerms: words })
       if (out.length >= 50) break
@@ -324,31 +291,6 @@ export default function EntryList({ journal, entries }: EntryListProps) {
     }
   }
 
-  async function handleNewEntry() {
-    if (isCreating) return
-    setIsCreating(true)
-
-    const today = new Date().toLocaleDateString('en-CA')
-    const result = await createEntry({
-      journal_id: journal.journal_id,
-      entry_date: today,
-    })
-
-    if ('error' in result) {
-      // Refresh the page so any entry that was created server-side (despite the
-      // client-side error, e.g. a Supabase timeout) becomes visible rather than
-      // silently duplicated on a retry.
-      router.refresh()
-      toast.error('Could not create entry — the page has been refreshed.')
-      setIsCreating(false)
-      return
-    }
-
-    router.push(entryHref(surface, journal.journal_id, result.entry_id, {
-      standalone: surface === 'hidden' && !journal.is_hidden,
-    }))
-  }
-
   const hasDatePinFilters = !!(fromDate || toDate || pinnedOnly || favouritesOnly)
   const hasActiveFilters = hasDatePinFilters || liveTagNames.length > 0
   const isAnyClientFilterActive = isTagFilterActive || hasDatePinFilters
@@ -356,77 +298,29 @@ export default function EntryList({ journal, entries }: EntryListProps) {
 
   return (
     <div className="p-6 max-w-[800px] mx-auto">
-      {/* Journal hero banner */}
-      <div
-        className="rounded-2xl p-7 mb-7 border"
-        style={{
-          background: isDark
-            ? `linear-gradient(160deg, ${hexAlpha(accent, '12')} 0%, ${hexAlpha(accent, '05')} 100%)`
-            : `linear-gradient(160deg, ${hexAlpha(accent, '18')} 0%, ${hexAlpha(accent, '05')} 100%)`,
-          borderColor: hexAlpha(accent, '25'),
-        }}
-      >
-        <div className="flex items-start gap-5">
-          {/* Book icon */}
-          <div
-            className="shrink-0"
-            style={{ filter: `drop-shadow(0 6px 16px ${hexAlpha(accent, '40')})` }}
-          >
-            <BookIcon color={accent} size={68} />
-          </div>
+      {/* Header */}
+      <div className="mb-6">
+        <Link
+          href="/hidden"
+          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-3"
+        >
+          <ArrowLeft size={14} />
+          Back to Hidden
+        </Link>
 
-          {/* Info + action */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h1
-                  className="text-[22px] font-bold text-[var(--text-primary)] truncate"
-                  style={{ letterSpacing: '-0.4px' }}
-                >
-                  {journal.title}
-                </h1>
-                {journal.description && (
-                  <p className="text-[13px] text-[var(--text-muted)] mt-0.5">
-                    {journal.description}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={handleNewEntry}
-                disabled={isCreating}
-                className="flex items-center gap-2 px-5 py-[10px] rounded-[10px] text-white text-[13px] font-semibold shrink-0 disabled:opacity-70 disabled:cursor-not-allowed transition-opacity hover:opacity-90"
-                style={{
-                  background: accent,
-                  boxShadow: `0 4px 14px ${hexAlpha(accent, '45')}`,
-                }}
-              >
-                {isCreating ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <PenLine size={15} />
-                )}
-                {isCreating ? 'Creating…' : 'New Entry'}
-              </button>
-            </div>
-
-            {/* Stat pills */}
-            <div className="flex items-center gap-2 mt-4 flex-wrap">
-              <span className="flex items-center gap-1.5 px-[14px] py-[5px] rounded-full text-xs bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)]">
-                <BookOpen size={11} />
-                {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-              </span>
-              <span className="flex items-center gap-1.5 px-[14px] py-[5px] rounded-full text-xs bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)]">
-                <Calendar size={11} />
-                {lastUpdated}
-              </span>
-            </div>
-          </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--text-primary)]">
+            Hidden Entries
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            {entries.length} standalone {entries.length === 1 ? 'entry' : 'entries'}
+            {' · read-only system journal'}
+          </p>
         </div>
       </div>
 
-      {/* Search + filter area */}
+      {/* Search + filter area — same shape as EntryList for the public surface */}
       <div className="mb-5">
-        {/* Search input */}
         <div className="flex items-center gap-2 px-4 py-2.5 bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] mb-3">
           <Search size={16} className="shrink-0 text-[#9E9E9E]" />
           <input
@@ -453,9 +347,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </p>
         )}
 
-        {/* Filter row — date presets + custom range + pinned */}
         <div className="flex flex-col gap-2">
-          {/* Quick date presets */}
           <div className="flex items-center flex-wrap gap-1.5">
             <span className="text-xs text-[var(--text-secondary)] mr-0.5">Date:</span>
             {(['today', 'week', 'month', 'year'] as const).map((preset) => {
@@ -484,10 +376,8 @@ export default function EntryList({ journal, entries }: EntryListProps) {
               )
             })}
 
-            {/* Divider */}
             <span className="text-[var(--border)] select-none">|</span>
 
-            {/* Custom range */}
             <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
               <span>From</span>
               <input
@@ -507,7 +397,6 @@ export default function EntryList({ journal, entries }: EntryListProps) {
               />
             </label>
 
-            {/* Pinned only */}
             <button
               onClick={() => setPinnedOnly((v) => !v)}
               className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
@@ -519,7 +408,6 @@ export default function EntryList({ journal, entries }: EntryListProps) {
               Pinned only
             </button>
 
-            {/* Favourites only */}
             <button
               onClick={() => setFavouritesOnly((v) => !v)}
               className={`text-xs px-3 py-1 rounded-lg border font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-[#1976D2] ${
@@ -533,7 +421,6 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </div>
         </div>
 
-        {/* Active filter chips */}
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {fromDate && (
@@ -557,8 +444,19 @@ export default function EntryList({ journal, entries }: EntryListProps) {
         )}
       </div>
 
-      {/* Full-text search results */}
-      {isTextSearchActive && (
+      {/* Empty entire-list state — surfaces when there are no standalone
+          hidden entries at all, before any filter is applied. */}
+      {entries.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A] mb-3" />
+          <p className="text-base text-[var(--text-secondary)]">
+            No standalone hidden entries
+          </p>
+          <p className="text-sm text-[var(--text-muted)] mt-1 max-w-sm">
+            Hide an individual entry inside a public journal and it&apos;ll show up here.
+          </p>
+        </div>
+      ) : isTextSearchActive ? (
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2
@@ -594,28 +492,31 @@ export default function EntryList({ journal, entries }: EntryListProps) {
                   key={result.entry.entry_id}
                   onClick={() =>
                     router.push(
-                      entryHref(surface, journal.journal_id, result.entry.entry_id, {
-                        // Search results within EntryList are always scoped to
-                        // the current journal — share the parent's hidden flag.
-                        standalone: surface === 'hidden' && !journal.is_hidden,
+                      entryHref(surface, result.entry.journal_id, result.entry.entry_id, {
+                        // standalone-hidden: parent journal is public
+                        standalone: true,
                       }),
                     )
                   }
                   className="w-full text-left bg-[var(--bg-surface)] rounded-xl border border-[var(--border)] px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors"
                 >
-                  {/* Title */}
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: result.entry.parentJournalColor }}
+                    />
+                    <span className="text-xs text-[var(--text-secondary)] truncate">
+                      {result.entry.parentJournalTitle}
+                    </span>
+                  </div>
                   <p className="font-medium text-[15px] text-[var(--text-primary)] truncate">
                     {result.entry.title ?? <em>Untitled</em>}
                   </p>
-
-                  {/* Date + word count */}
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
                     {format(parseISO(result.entry.entry_date), 'd MMM yyyy')}
                     {' · '}
                     {result.entry.word_count} words
                   </p>
-
-                  {/* Snippet */}
                   {result.snippet && (
                     <p className="text-[13px] text-[var(--text-secondary)] mt-1.5 leading-relaxed line-clamp-2">
                       <HighlightedText text={result.snippet} terms={result.matchedTerms} />
@@ -626,10 +527,7 @@ export default function EntryList({ journal, entries }: EntryListProps) {
             </div>
           )}
         </div>
-      )}
-
-      {/* Normal / tag-filtered entry list */}
-      {!isTextSearchActive && (
+      ) : (
         <>
           <div className="flex items-center justify-between mb-4">
             <h2
@@ -644,65 +542,36 @@ export default function EntryList({ journal, entries }: EntryListProps) {
           </div>
 
           {filteredEntries.length === 0 ? (
-            isAnyClientFilterActive ? (
-              <div className="flex flex-col items-center gap-3 py-16 text-center">
-                <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A]" />
-                <p className="text-base text-[var(--text-secondary)]">
-                  No entries match the active filters
-                </p>
-                <button
-                  onClick={clearAllFilters}
-                  className="text-sm text-[#1976D2] hover:underline"
-                >
-                  Clear filters
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
-                <BookOpen className="w-12 h-12 text-[#E0E0E0] dark:text-[#3A3A3A] mb-4" />
-                <h2 className="text-lg font-medium text-[var(--text-secondary)] mb-1">
-                  No entries yet
-                </h2>
-                <p className="text-sm text-[var(--text-muted)] mb-6">
-                  Start writing your first entry.
-                </p>
-                <button
-                  onClick={handleNewEntry}
-                  disabled={isCreating}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-70"
-                  style={{ background: accent }}
-                >
-                  {isCreating && <Loader2 size={15} className="animate-spin" />}
-                  {isCreating ? 'Creating…' : 'Create your first entry'}
-                </button>
-              </div>
-            )
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <SearchX className="w-10 h-10 text-[#E0E0E0] dark:text-[#3A3A3A]" />
+              <p className="text-base text-[var(--text-secondary)]">
+                No entries match the active filters
+              </p>
+              <button
+                onClick={clearAllFilters}
+                className="text-sm text-[#1976D2] hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {(() => {
-                // "Last edited" = the most recently edited entry in the
-                // *whole* journal, not just the filtered slice. If the real
-                // most-recent entry is filtered out, no card gets the badge.
-                // Pin/favourite/hide flips no longer touch updated_at
-                // (migration 024), so the badge is stable across those.
-                const latestEntry = entries.reduce<typeof entries[0] | null>((a, b) => {
-                  if (!a) return b
-                  return new Date(a.updated_at).getTime() >= new Date(b.updated_at).getTime() ? a : b
-                }, null)
-                return filteredEntries.map((entry) => (
-                  <EntryCard
-                    key={entry.entry_id}
-                    entry={entry}
-                    journalId={journal.journal_id}
-                    accentColor={accent}
-                    isLatest={entry.entry_id === latestEntry?.entry_id}
-                    onDelete={setDeleteTarget}
-                    tags={entry.tags}
-                    parentJournalIsHidden={journal.is_hidden}
-                    contextIsHiddenJournal={contextIsHiddenJournal}
-                  />
-                ))
-              })()}
+              {filteredEntries.map((entry) => (
+                <EntryCard
+                  key={entry.entry_id}
+                  entry={entry}
+                  journalId={entry.journal_id}
+                  accentColor={entry.parentJournalColor}
+                  isLatest={false}
+                  tags={entry.tags}
+                  onDelete={setDeleteTarget}
+                  parentJournalLabel={{
+                    title: entry.parentJournalTitle,
+                    color: entry.parentJournalColor,
+                  }}
+                  parentJournalIsHidden={false}
+                />
+              ))}
             </div>
           )}
         </>
@@ -711,8 +580,8 @@ export default function EntryList({ journal, entries }: EntryListProps) {
       {deleteTarget && (
         <DeleteEntryModal
           entryId={deleteTarget.entry_id}
-          journalId={journal.journal_id}
-          parentJournalIsHidden={journal.is_hidden}
+          journalId={deleteTarget.journal_id}
+          parentJournalIsHidden={false}
           onClose={() => setDeleteTarget(null)}
         />
       )}

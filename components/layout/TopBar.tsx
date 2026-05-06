@@ -13,13 +13,16 @@ const SECTION_LABELS: Record<string, string> = {
   analytics:    'Analytics',
   tags:         'Tags',
   hidden:       'Hidden',
+  standalone:   'Hidden Entries',
   'recycle-bin':'Recycle Bin',
   settings:     'Settings',
 }
 
 // Path segments under /hidden/** that are router grouping rather than
-// visitable pages. /hidden/entry/<eid> is the standalone-entry URL —
-// "entry" is just a namespace, not a crumb.
+// visitable pages. The bare /hidden/entry/<eid> URL has no real
+// "entry" page — but the standalone-hidden listing IS visitable at
+// /hidden/standalone, so we substitute that crumb in its place. See
+// buildCrumbs below.
 const HIDDEN_GROUPING_SEGMENTS = new Set(['entry'])
 
 // Path segments that are structural grouping only (no crumb of their own).
@@ -44,9 +47,15 @@ function buildCrumbs(pathname: string, titles: Record<string, string>): Crumb[] 
 
     if (STRUCTURAL_SEGMENTS.has(segment)) continue
     // Under /hidden/**, "entry" is a router namespace (the standalone-entry
-    // route /hidden/entry/<eid>), not a visitable page — skip its crumb so
-    // the trail reads "Hidden > <entry title>".
-    if (inHidden && i > 0 && HIDDEN_GROUPING_SEGMENTS.has(segment)) continue
+    // route /hidden/entry/<eid>), not a visitable page — replace its crumb
+    // with a clickable "Hidden Entries" link to the standalone listing so
+    // the trail reads "Hidden > Hidden Entries > <entry title>". The user
+    // arrived at this entry via the standalone listing, so the breadcrumb
+    // should give them a one-click path back.
+    if (inHidden && i > 0 && HIDDEN_GROUPING_SEGMENTS.has(segment)) {
+      crumbs.push({ label: 'Hidden Entries', href: '/hidden/standalone' })
+      continue
+    }
 
     const sectionLabel = SECTION_LABELS[segment]
     const label = sectionLabel ?? titles[segment] ?? fallbackLabel(segment, parts, i)
@@ -71,6 +80,7 @@ export default function TopBar() {
   const router = useRouter()
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const setCreateJournalOpen = useUIStore((s) => s.setCreateJournalOpen)
+  const setCreateHiddenJournalOpen = useUIStore((s) => s.setCreateHiddenJournalOpen)
   const openSearch = useUIStore((s) => s.openSearch)
   const breadcrumbTitles = useUIStore((s) => s.breadcrumbTitles)
   const hiddenVaultLocked = useUIStore((s) => s.hiddenVaultLocked)
@@ -88,6 +98,13 @@ export default function TopBar() {
     setCreateJournalOpen(true)
     if (!pathname.startsWith('/journals')) {
       router.push('/journals')
+    }
+  }
+
+  function handleNewHiddenJournal() {
+    setCreateHiddenJournalOpen(true)
+    if (pathname !== '/hidden') {
+      router.push('/hidden')
     }
   }
 
@@ -160,16 +177,25 @@ export default function TopBar() {
               <span className="hidden sm:inline">Search vault</span>
             </button>
           ) : (
-            <button
-              onClick={openSearch}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
-              aria-label="Search vault (Ctrl+K)"
-              title="Search vault"
-            >
-              <Lock size={14} />
-              <Search size={15} />
-              <span className="hidden sm:inline">Search vault</span>
-            </button>
+            <>
+              <button
+                onClick={openSearch}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
+                aria-label="Search vault (Ctrl+K)"
+                title="Search vault"
+              >
+                <Lock size={14} />
+                <Search size={15} />
+                <span className="hidden sm:inline">Search vault</span>
+              </button>
+              <button
+                onClick={handleNewHiddenJournal}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#1976D2] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:ring-offset-2 focus-visible:outline-none"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">New Hidden Journal</span>
+              </button>
+            </>
           )
         ) : (
           <>

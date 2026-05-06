@@ -13,6 +13,7 @@ import { entryHref } from '@/lib/utils/href'
 import type { Database } from '@/types/supabase'
 import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import TagChip from '@/components/ui/TagChip'
+import IndividuallyHiddenIndicator from '@/components/hidden/IndividuallyHiddenIndicator'
 
 /** Convert a 6-digit hex color + 2-char hex opacity to rgba() to avoid
  *  browser normalisation causing SSR/client hydration mismatches. */
@@ -43,6 +44,19 @@ interface EntryCardProps {
    *  nested `/hidden/<jid>/<eid>` and standalone `/hidden/entry/<eid>`
    *  forms. Ignored on the public surface. */
   parentJournalIsHidden?: boolean
+  /** Set when the card is rendered inside a hidden journal's entry list.
+   *  Suppresses the per-entry hide/unhide menu item (rule: an entry
+   *  inside a hidden journal cannot be individually hidden) and surfaces
+   *  the IndividuallyHiddenIndicator when entry.is_hidden is also true. */
+  contextIsHiddenJournal?: boolean
+  /** When true, restrict the dropdown menu to "Unhide" + "Delete" only.
+   *  Used on the standalone-hidden page where pin/favourite are not
+   *  meaningful management actions for entries the user is triaging. */
+  restrictedMenu?: boolean
+  /** When provided, renders a coloured-dot + label inline in the meta
+   *  row. Used on /hidden/standalone where each card represents an
+   *  entry from a different parent journal. */
+  parentJournalLabel?: { title: string; color: string }
 }
 
 export default function EntryCard({
@@ -53,6 +67,9 @@ export default function EntryCard({
   onDelete,
   tags = [],
   parentJournalIsHidden = true,
+  contextIsHiddenJournal = false,
+  restrictedMenu = false,
+  parentJournalLabel,
 }: EntryCardProps) {
   const router = useRouter()
   const surface = useSurface()
@@ -237,14 +254,9 @@ export default function EntryCard({
             {entry.title || 'Untitled'}
           </h3>
 
-          {isPinned && (
-            <Pin
-              size={12}
-              className="shrink-0 fill-[#1976D2] text-[#1976D2]"
-              aria-label="Pinned"
-            />
-          )}
-
+          {/* Last edited badge first, then the status indicators (pin,
+              favourite, individually-hidden), then the meatball. Order
+              reads left → right as: title · LAST EDITED · indicators · ⋯ */}
           {isLatest && (
             <span
               className="shrink-0 text-[10px] font-bold px-[9px] py-0.5 rounded-full uppercase"
@@ -256,6 +268,32 @@ export default function EntryCard({
             >
               Last edited
             </span>
+          )}
+
+          {isPinned && (
+            <Pin
+              size={12}
+              className="shrink-0 fill-[#1976D2] text-[#1976D2]"
+              aria-label="Pinned"
+            />
+          )}
+
+          {isFav && (
+            <Star
+              size={12}
+              className="shrink-0 fill-amber-400 text-amber-400"
+              aria-label="Favourite"
+            />
+          )}
+
+          {/* Inline-hidden indicator — surfaces only inside a hidden
+              journal where the entry has its own is_hidden flag set. The
+              user can't unhide it from this view (model rule: entries
+              inside a hidden journal don't expose hide/unhide); the
+              tooltip explains why it'll stay hidden after a journal
+              unhide. */}
+          {contextIsHiddenJournal && entry.is_hidden && (
+            <IndividuallyHiddenIndicator />
           )}
 
           {/* More menu trigger */}
@@ -271,9 +309,23 @@ export default function EntryCard({
           </div>
         </div>
 
-        {/* Row 2: date + read time */}
+        {/* Row 2: date + read time (+ optional parent journal label) */}
         <div className="flex items-center gap-1 text-xs text-[var(--text-muted)] mb-2">
-          <Calendar size={10} />
+          {parentJournalLabel ? (
+            <>
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: parentJournalLabel.color }}
+                aria-hidden
+              />
+              <span className="truncate max-w-[160px]">
+                {parentJournalLabel.title}
+              </span>
+              <span>·</span>
+            </>
+          ) : (
+            <Calendar size={10} />
+          )}
           <span>{formattedDate}</span>
           <span>·</span>
           <span>{readTime} min read</span>
@@ -318,39 +370,59 @@ export default function EntryCard({
           className="w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-lg py-1 overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => { setMenuOpen(false); handleFavToggle() }}
-            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-          >
-            <Star
-              size={14}
-              className={isFav ? 'fill-amber-400 text-amber-400 shrink-0' : 'text-[#9E9E9E] shrink-0'}
-            />
-            <span>{isFav ? 'Remove favourite' : 'Add to favourites'}</span>
-          </button>
+          {!restrictedMenu && (
+            <>
+              <button
+                onClick={() => { setMenuOpen(false); handleFavToggle() }}
+                className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+              >
+                <Star
+                  size={14}
+                  className={isFav ? 'fill-amber-400 text-amber-400 shrink-0' : 'text-[#9E9E9E] shrink-0'}
+                />
+                <span>{isFav ? 'Remove favourite' : 'Add to favourites'}</span>
+              </button>
 
-          <button
-            onClick={() => { setMenuOpen(false); handlePinToggle() }}
-            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-          >
-            <Pin
-              size={14}
-              className={isPinned ? 'fill-[#1976D2] text-[#1976D2] shrink-0' : 'text-[#9E9E9E] shrink-0'}
-            />
-            <span>{isPinned ? 'Unpin entry' : 'Pin entry'}</span>
-          </button>
+              <button
+                onClick={() => { setMenuOpen(false); handlePinToggle() }}
+                className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+              >
+                <Pin
+                  size={14}
+                  className={isPinned ? 'fill-[#1976D2] text-[#1976D2] shrink-0' : 'text-[#9E9E9E] shrink-0'}
+                />
+                <span>{isPinned ? 'Unpin entry' : 'Pin entry'}</span>
+              </button>
+            </>
+          )}
 
-          <button
-            onClick={() => { setMenuOpen(false); handleHideToggle() }}
-            className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
-          >
-            {surface === 'hidden'
-              ? <Eye size={14} className="text-[#9E9E9E] shrink-0" />
-              : <EyeOff size={14} className="text-[#9E9E9E] shrink-0" />}
-            <span>{surface === 'hidden' ? 'Unhide entry' : 'Hide entry'}</span>
-          </button>
+          {/* Hide / unhide:
+              - Public surface: "Hide entry" (default).
+              - Hidden surface, parent-journal context: SUPPRESSED — model
+                rule says an entry inside a hidden journal cannot be
+                individually hidden/unhidden. To unhide an individually
+                hidden entry, the user first unhides the parent journal,
+                then unhides the entry from the system journal view.
+              - Hidden surface, otherwise (standalone hidden entries):
+                "Unhide entry". */}
+          {!contextIsHiddenJournal && (
+            <button
+              onClick={() => { setMenuOpen(false); handleHideToggle() }}
+              className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition-colors"
+            >
+              {surface === 'hidden'
+                ? <Eye size={14} className="text-[#9E9E9E] shrink-0" />
+                : <EyeOff size={14} className="text-[#9E9E9E] shrink-0" />}
+              <span>{surface === 'hidden' ? 'Unhide entry' : 'Hide entry'}</span>
+            </button>
+          )}
 
-          <div className="my-1 border-t border-[var(--border)]" />
+          {/* Divider only when something sits above Delete — keeps the
+              menu visually tight in the (restrictedMenu + hidden journal)
+              edge case where Delete would be the sole item. */}
+          {(!restrictedMenu || !contextIsHiddenJournal) && (
+            <div className="my-1 border-t border-[var(--border)]" />
+          )}
 
           <button
             onClick={() => { setMenuOpen(false); onDelete(entry) }}

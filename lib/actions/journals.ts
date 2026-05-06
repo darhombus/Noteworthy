@@ -27,6 +27,20 @@ export async function createJournal(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // A hidden journal can only be created once the user has a vault secret —
+  // otherwise the row would never be reachable from the UI and we'd have
+  // bypassed the same guard hideJournal enforces for an existing journal.
+  if (parsed.data.is_hidden) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('vault_secret_type')
+      .eq('user_id', user.id)
+      .single()
+    if (!profile?.vault_secret_type) {
+      return { error: 'no_vault: Set up your vault first' }
+    }
+  }
+
   const { data: journal, error } = await supabase
     .from('journals')
     .insert({ ...parsed.data, user_id: user.id })
@@ -55,9 +69,16 @@ export async function updateJournal(
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // updateJournalSchema technically permits is_hidden, but toggling hidden
+  // belongs to the dedicated hideJournal/unhideJournal flow (vault gate +
+  // unlock requirement). Strip it here so updateJournal can only ever
+  // change presentation fields.
+  const { is_hidden: _ignored, ...presentationFields } = parsed.data
+  void _ignored
+
   const { data: journal, error } = await supabase
     .from('journals')
-    .update({ ...parsed.data })
+    .update(presentationFields)
     .eq('journal_id', id)
     .eq('user_id', user.id)
     .select()
@@ -101,6 +122,14 @@ export async function deleteJournal(
 
   revalidatePath('/journals')
   revalidatePath('/hidden')
+  // The cascade above moved every entry in the journal out of the public
+  // scope, which changes Tags usage_count, Dashboard aggregates,
+  // Analytics rollups, and the Recycle Bin listing. Force-refresh each
+  // one so they don't briefly keep showing the deleted journal's data.
+  revalidatePath('/tags')
+  revalidatePath('/dashboard')
+  revalidatePath('/analytics')
+  revalidatePath('/recycle-bin')
   return { success: true }
 }
 

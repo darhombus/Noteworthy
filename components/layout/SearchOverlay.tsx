@@ -18,6 +18,7 @@ import { useUIStore } from '@/store/useUIStore'
 import TagChip from '@/components/ui/TagChip'
 import { entryHref, journalHref } from '@/lib/utils/href'
 import { useSurface } from '@/lib/surface'
+import IndividuallyHiddenIndicator from '@/components/hidden/IndividuallyHiddenIndicator'
 
 interface Tag {
   tag_id: string
@@ -34,6 +35,12 @@ interface IndexEntry {
   /** Parent journal hidden flag — drives the /hidden/<jid>/<eid> vs
    *  /hidden/entry/<eid> URL choice on the hidden surface. */
   journal_is_hidden: boolean
+  /** The entry's own is_hidden flag. Used together with
+   *  journal_is_hidden to decide whether to render the
+   *  IndividuallyHiddenIndicator: the asterisk means "this entry will
+   *  remain hidden even if the parent journal is unhidden", which is
+   *  only true when BOTH flags are set. */
+  entry_is_hidden: boolean
   entry_date: string
   word_count: number
   is_pinned: boolean
@@ -76,6 +83,7 @@ interface SnapshotResponse {
     journal_title: string
     journal_color: string
     journal_is_hidden: boolean
+    entry_is_hidden: boolean
     entry_date: string
     word_count: number
     is_pinned: boolean
@@ -298,21 +306,32 @@ export default function SearchOverlay() {
           return
         }
         const data = (await res.json()) as SnapshotResponse
-        const entries: IndexEntry[] = data.entries.map((e) => ({
-          entry_id: e.entry_id,
-          title: e.title,
-          journal_id: e.journal_id,
-          journal_title: e.journal_title,
-          journal_color: e.journal_color,
-          journal_is_hidden: e.journal_is_hidden,
-          entry_date: e.entry_date,
-          word_count: e.word_count,
-          is_pinned: e.is_pinned,
-          is_favorite: e.is_favorite,
-          haystack: (e.search_text ?? '').toLowerCase(),
-          text: e.search_text ?? '',
-          tags: Array.isArray(e.tags) ? e.tags : [],
-        }))
+        const entries: IndexEntry[] = data.entries.map((e) => {
+          const tags = Array.isArray(e.tags) ? e.tags : []
+          // Include tag names in the search haystack so plain-text
+          // queries (no `#` prefix) match an entry by its tag — this
+          // covers brand-new tags whose IDs may not yet be in the
+          // /api/tags response, and matches the user expectation that
+          // "search for tagname" finds entries carrying that tag.
+          const tagText = tags.map((t) => t.tag_name).join(' ')
+          const baseText = (e.search_text ?? '') + (tagText ? ' ' + tagText : '')
+          return {
+            entry_id: e.entry_id,
+            title: e.title,
+            journal_id: e.journal_id,
+            journal_title: e.journal_title,
+            journal_color: e.journal_color,
+            journal_is_hidden: e.journal_is_hidden,
+            entry_is_hidden: e.entry_is_hidden,
+            entry_date: e.entry_date,
+            word_count: e.word_count,
+            is_pinned: e.is_pinned,
+            is_favorite: e.is_favorite,
+            haystack: baseText.toLowerCase(),
+            text: e.search_text ?? '',
+            tags,
+          }
+        })
         const journals: IndexJournal[] = data.journals.map((j) => ({
           journal_id: j.journal_id,
           title: j.title,
@@ -401,18 +420,30 @@ export default function SearchOverlay() {
   const queryWordsKey = queryWords.join(' ')
 
   // Resolve tag IDs from #patterns using partial (contains) matching, so
-  // typing #wo live-matches "work", "writing", etc.
+  // typing #wo live-matches "work", "writing", etc. We union /api/tags
+  // (the user's full library) with every tag embedded in the snapshot
+  // so a brand-new tag — created in this session and not yet returned
+  // by /api/tags — still resolves and matches its entries.
   const liveTagIds = useMemo(() => {
     if (liveTagNames.length === 0) return new Set<string>()
     const set = new Set<string>()
-    for (const t of tags) {
+    const seen = new Set<string>()
+    const matchAgainst = (t: { tag_id: string; tag_name: string }) => {
+      if (seen.has(t.tag_id)) return
+      seen.add(t.tag_id)
       if (liveTagNames.some((p) => t.tag_name.toLowerCase().includes(p))) {
         set.add(t.tag_id)
       }
     }
+    for (const t of tags) matchAgainst(t)
+    if (snapshot) {
+      for (const e of snapshot.entries) {
+        for (const t of e.tags) matchAgainst(t)
+      }
+    }
     return set
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tags, liveTagNamesKey])
+  }, [tags, liveTagNamesKey, snapshot])
 
   // Sync queryTooLong off the live input length
   useEffect(() => {
@@ -850,7 +881,7 @@ export default function SearchOverlay() {
                           }`}
                           style={{ width: 'calc(100% - 1rem)' }}
                         >
-                          {/* Journal label */}
+                          {/* Journal label. */}
                           <div className="flex items-center gap-1.5 mb-0.5">
                             <span
                               className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -861,10 +892,37 @@ export default function SearchOverlay() {
                             </span>
                           </div>
 
-                          {/* Title */}
-                          <p className="font-medium text-sm text-[var(--text-primary)] truncate">
-                            {entry.title ?? <em>Untitled</em>}
-                          </p>
+                          {/* Title — and, alongside it, the
+                              IndividuallyHiddenIndicator. The asterisk
+                              attaches to the entry (not its parent
+                              journal) because it describes the entry's
+                              own state: "this entry was individually
+                              hidden first AND its parent journal is now
+                              also hidden, so it will stay hidden after
+                              a journal unhide." Standalone-hidden
+                              entries (entry hidden, journal public) do
+                              NOT show the asterisk — they're already
+                              triaged from the Hidden Entries system
+                              journal. */}
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="font-medium text-sm text-[var(--text-primary)] truncate">
+                              {entry.title ?? <em>Untitled</em>}
+                            </p>
+                            {surface === 'hidden' &&
+                              entry.entry_is_hidden &&
+                              entry.journal_is_hidden && (
+                              // Stop propagation so hovering/focusing
+                              // the tooltip trigger doesn't also
+                              // activate the surrounding result button.
+                              <span
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                className="shrink-0 inline-flex items-center"
+                              >
+                                <IndividuallyHiddenIndicator />
+                              </span>
+                            )}
+                          </div>
 
                           {/* Date + word count */}
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">

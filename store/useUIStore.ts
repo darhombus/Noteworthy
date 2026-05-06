@@ -6,6 +6,12 @@ interface UIState {
   setSidebarOpen: (open: boolean) => void
   createJournalOpen: boolean
   setCreateJournalOpen: (open: boolean) => void
+  // Sibling flag for the Hidden surface. Kept as a separate boolean (rather
+  // than a discriminated `mode` field) so the public TopBar's New Journal
+  // button can never accidentally open a hidden-journal modal and vice
+  // versa — each surface owns its own flag and reads only that one.
+  createHiddenJournalOpen: boolean
+  setCreateHiddenJournalOpen: (open: boolean) => void
   isSearchOpen: boolean
   openSearch: () => void
   closeSearch: () => void
@@ -33,6 +39,8 @@ export const useUIStore = create<UIState>((set) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   createJournalOpen: false,
   setCreateJournalOpen: (open) => set({ createJournalOpen: open }),
+  createHiddenJournalOpen: false,
+  setCreateHiddenJournalOpen: (open) => set({ createHiddenJournalOpen: open }),
   isSearchOpen: false,
   openSearch: () => set({ isSearchOpen: true }),
   closeSearch: () => set({ isSearchOpen: false }),

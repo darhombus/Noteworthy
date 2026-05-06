@@ -33,6 +33,7 @@ export const createJournalSchema = z.object({
   description: z.string().max(500, 'Description must be 500 characters or less').optional(),
   color: z.enum(JOURNAL_COLORS, { error: () => ({ message: 'Please select a colour' }) }),
   icon: z.enum(JOURNAL_ICONS, { error: () => ({ message: 'Please select an icon' }) }),
+  is_hidden: z.boolean().optional(),
 })
 
 export const updateJournalSchema = createJournalSchema.partial()

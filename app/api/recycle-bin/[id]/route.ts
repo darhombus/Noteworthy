@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { deleteEntryMedia } from '@/lib/actions/media'
-import { isVaultOpen } from '@/lib/privacy/vault'
+import { isBinRevealed } from '@/lib/privacy/binReveal'
+
+/** Acting on a hidden recycle-bin row requires the bin-reveal cookie
+ *  specifically — vault state is intentionally not consulted, so the
+ *  bin's reveal flow is fully separate from /hidden access. */
+async function canActOnHiddenRow(userId: string): Promise<boolean> {
+  return isBinRevealed(userId)
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -28,10 +35,10 @@ export async function PATCH(
   }
 
   if (type === 'entry') {
-    // Surface gate: the public recycle-bin listing hides items where either
-    // the entry or its parent journal is hidden, so a per-item request for
-    // such an item could only have come from the hidden surface — which
-    // requires an open vault.
+    // Surface gate: hidden entries (or entries inside a hidden journal)
+    // can only be acted on through an open vault. The pg_cron purge
+    // bypasses this entirely — it runs as the postgres role and
+    // doesn't go through this handler.
     const { data: current, error: readError } = await supabase
       .from('entries')
       .select('is_hidden, journals!inner(is_hidden)')
@@ -43,7 +50,7 @@ export async function PATCH(
     type JournalHiddenRel = { is_hidden: boolean }
     const journalHidden =
       (current.journals as unknown as JournalHiddenRel | null)?.is_hidden ?? false
-    if ((current.is_hidden || journalHidden) && !(await isVaultOpen(user.id))) {
+    if ((current.is_hidden || journalHidden) && !(await canActOnHiddenRow(user.id))) {
       return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
     }
 
@@ -54,9 +61,6 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   } else {
-    // Restore the journal only. Entries that were soft-deleted alongside it
-    // remain in the recycle bin as separate items so the user can choose to
-    // restore or permanently delete each one individually.
     const { data: current, error: readError } = await supabase
       .from('journals')
       .select('is_hidden')
@@ -66,7 +70,7 @@ export async function PATCH(
 
     if (readError) return NextResponse.json({ error: readError.message }, { status: 500 })
 
-    if (current.is_hidden && !(await isVaultOpen(user.id))) {
+    if (current.is_hidden && !(await canActOnHiddenRow(user.id))) {
       return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
     }
 
@@ -76,7 +80,9 @@ export async function PATCH(
       .eq('journal_id', id)
       .eq('user_id', user.id)
 
-    if (journalError) return NextResponse.json({ error: journalError.message }, { status: 500 })
+    if (journalError) {
+      return NextResponse.json({ error: journalError.message }, { status: 500 })
+    }
   }
 
   return NextResponse.json({ success: true })
@@ -107,7 +113,6 @@ export async function DELETE(
   }
 
   if (type === 'entry') {
-    // Surface gate before we destroy anything — see PATCH for rationale.
     const { data: current, error: readError } = await supabase
       .from('entries')
       .select('is_hidden, journals!inner(is_hidden)')
@@ -119,7 +124,7 @@ export async function DELETE(
     type JournalHiddenRel = { is_hidden: boolean }
     const journalHidden =
       (current.journals as unknown as JournalHiddenRel | null)?.is_hidden ?? false
-    if ((current.is_hidden || journalHidden) && !(await isVaultOpen(user.id))) {
+    if ((current.is_hidden || journalHidden) && !(await canActOnHiddenRow(user.id))) {
       return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
     }
 
@@ -139,11 +144,10 @@ export async function DELETE(
       return NextResponse.json({ error: journalReadError.message }, { status: 500 })
     }
 
-    if (journalRow.is_hidden && !(await isVaultOpen(user.id))) {
+    if (journalRow.is_hidden && !(await canActOnHiddenRow(user.id))) {
       return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
     }
 
-    // Find all entries in the journal
     const { data: entries, error: fetchError } = await supabase
       .from('entries')
       .select('entry_id')
@@ -151,10 +155,8 @@ export async function DELETE(
 
     if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
 
-    // Delete media for each entry
     await Promise.all((entries ?? []).map((e) => deleteEntryMedia(e.entry_id)))
 
-    // Hard-delete all entries
     const { error: entriesDeleteError } = await supabase
       .from('entries')
       .delete()
@@ -164,7 +166,6 @@ export async function DELETE(
       return NextResponse.json({ error: entriesDeleteError.message }, { status: 500 })
     }
 
-    // Hard-delete the journal
     const { error: journalDeleteError } = await supabase
       .from('journals')
       .delete()

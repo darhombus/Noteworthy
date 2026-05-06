@@ -33,6 +33,11 @@ interface IndexEntry {
   journal_title: string
   journal_color: string
   journal_is_hidden: boolean
+  /** The entry's own is_hidden flag. Surfaced so the overlay can mark
+   *  entries that will stay hidden even if the parent journal is later
+   *  unhidden (both flags true) and distinguish them from standalone
+   *  hidden entries (only entry_is_hidden true). */
+  entry_is_hidden: boolean
   entry_date: string
   word_count: number
   is_pinned: boolean
@@ -100,6 +105,7 @@ export async function GET(request: NextRequest) {
     journal_title: string
     journal_color: string
     journal_is_hidden: boolean
+    entry_is_hidden: boolean
     entry_date: string
     word_count: number
     is_pinned: boolean
@@ -117,6 +123,7 @@ export async function GET(request: NextRequest) {
     journal_title: row.journal_title,
     journal_color: row.journal_color,
     journal_is_hidden: row.journal_is_hidden,
+    entry_is_hidden: row.entry_is_hidden,
     entry_date: row.entry_date,
     word_count: row.word_count,
     is_pinned: row.is_pinned,

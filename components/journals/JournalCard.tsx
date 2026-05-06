@@ -210,12 +210,28 @@ export default function JournalCard({ journal, onEdit, onDelete }: JournalCardPr
 
         {/* Footer row */}
         <div className="flex items-center gap-2">
-          <span
-            className="text-xs font-semibold px-[10px] py-0.5 rounded-full"
-            style={{ color: accent, background: emojiBg }}
-          >
-            {journal.entry_count} {journal.entry_count === 1 ? 'entry' : 'entries'}
-          </span>
+          {/* Visible-entry count is surface-aware. The DB rollup splits
+              entry_count (public) from hidden_entry_count (per-entry
+              hidden flag). On /hidden the card represents a hidden
+              journal, where ALL its entries are visible to the surface,
+              so the displayed total is the sum of both columns —
+              otherwise a journal with one was-standalone-hidden entry
+              would still report the public-only count after being
+              hidden. */}
+          {(() => {
+            const displayCount =
+              surface === 'hidden'
+                ? journal.entry_count + journal.hidden_entry_count
+                : journal.entry_count
+            return (
+              <span
+                className="text-xs font-semibold px-[10px] py-0.5 rounded-full"
+                style={{ color: accent, background: emojiBg }}
+              >
+                {displayCount} {displayCount === 1 ? 'entry' : 'entries'}
+              </span>
+            )
+          })()}
           <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
             <Calendar size={11} />
             {formattedDate}

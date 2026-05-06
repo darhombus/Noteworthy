@@ -110,10 +110,16 @@ export default async function DashboardPage() {
       .select('full_name')
       .eq('user_id', user.id)
       .single(),
+    // Top tag: exclude tags whose only usages are inside hidden entries
+    // / hidden journals. usage_count is scoped to public-visible entries
+    // by migration 023, so a `> 0` filter is enough — without it the
+    // dashboard would surface a tag whose every entry has been hidden,
+    // even though clicking through would land in an empty list.
     supabase
       .from('tags')
       .select('tag_name, usage_count')
       .eq('user_id', user.id)
+      .gt('usage_count', 0)
       .order('usage_count', { ascending: false })
       .limit(1)
       .maybeSingle(),

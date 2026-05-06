@@ -10,6 +10,7 @@ import {
   type UpdateEntryInput,
 } from '@/lib/validations/entries'
 import { EMPTY_TIPTAP_DOC, type TiptapNode } from '@/lib/types/tiptap'
+import { hideEntry, unhideEntry } from '@/lib/actions/vault'
 import type { Database } from '@/types/supabase'
 
 type Json = Database['public']['Tables']['entries']['Insert']['content']
@@ -157,6 +158,14 @@ export async function softDeleteEntry(
   revalidatePath(`/journals/${journalId}`)
   revalidatePath(`/hidden/${journalId}`)
   revalidatePath('/hidden')
+  // A soft-deleted entry must stop counting toward the Tags page, the
+  // Dashboard top-tag widget, Analytics aggregates, and must appear in
+  // the Recycle Bin — none of which Next.js refreshes off the per-entry
+  // path revalidations above.
+  revalidatePath('/tags')
+  revalidatePath('/dashboard')
+  revalidatePath('/analytics')
+  revalidatePath('/recycle-bin')
   return { success: true }
 }
 
@@ -180,6 +189,22 @@ export async function togglePin(
   revalidatePath('/journals', 'layout')
   revalidatePath('/hidden', 'layout')
   return { success: true }
+}
+
+/**
+ * Single-call hide/unhide toggle. Delegates to the existing vault-aware
+ * actions so the vault gate (no_vault for hide, vault_locked for unhide)
+ * and the parent-journal-hidden rejection stay in one place.
+ *
+ * Callers that prefer the directional names can keep using `hideEntry` /
+ * `unhideEntry` from `lib/actions/vault.ts`. Both routes pass through the
+ * same checks.
+ */
+export async function toggleEntryHidden(
+  id: string,
+  currentValue: boolean,
+): Promise<{ success: true } | { error: string }> {
+  return currentValue ? unhideEntry(id) : hideEntry(id)
 }
 
 export async function toggleEntryFavourite(
