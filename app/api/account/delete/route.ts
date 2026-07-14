@@ -24,10 +24,19 @@ export async function POST() {
     }
     const userId = user.id
 
-    // Admin client — bypasses RLS for cascaded deletes
+    // Admin client — bypasses RLS for cascaded deletes.
+    // Prefer the modern secret key; fall back to the legacy service-role key.
+    const secretKey =
+      process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!secretKey) {
+      console.error(
+        '[account/delete] neither SUPABASE_SECRET_KEY nor SUPABASE_SERVICE_ROLE_KEY is set',
+      )
+      return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+    }
     const admin = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      secretKey,
     )
 
     // 1. Fetch all journal IDs for the user
