@@ -1,5 +1,8 @@
 'use server'
 
+import { revalidateTag } from 'next/cache'
+import { getProfileCacheTag } from '@/lib/auth/server'
+import { clearHotCache } from '@/lib/perf/hot-cache'
 import { createClient } from '@/lib/supabase/server'
 
 export interface UserPreferences {
@@ -8,6 +11,17 @@ export interface UserPreferences {
   autoSaveInterval?: number
   dateFormat?: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
   timezone?: string
+}
+
+function invalidateProfileCache(userId: string) {
+  revalidateTag(getProfileCacheTag(userId), 'max')
+  // Also drop the in-process hot-cache entries — revalidateTag only flushes
+  // the App Router's cache and doesn't reach the per-process Map in
+  // lib/perf/hot-cache.ts. Without this, getCurrentProfile and
+  // getCurrentVaultSecretType would keep serving stale data for up to
+  // their TTL after a settings edit.
+  clearHotCache(`profile:full:${userId}`)
+  clearHotCache(`profile:secret-type:${userId}`)
 }
 
 export async function updateDisplayName(
@@ -25,6 +39,15 @@ export async function updateDisplayName(
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }
+
+  // Keep Auth JWT user_metadata.full_name in sync so server-side claim reads
+  // can render the latest display name without an extra profile query.
+  const { error: authError } = await supabase.auth.updateUser({
+    data: { full_name: fullName },
+  })
+  if (authError) return { error: authError.message }
+
+  invalidateProfileCache(user.id)
   return {}
 }
 
@@ -43,6 +66,7 @@ export async function updateAvatarUrl(
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }
+  invalidateProfileCache(user.id)
   return {}
 }
 
@@ -75,6 +99,7 @@ export async function updatePreferences(
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }
+  invalidateProfileCache(user.id)
   return {}
 }
 
@@ -121,3 +146,4 @@ export async function changePassword(
   if (error) return { error: error.message }
   return {}
 }
+

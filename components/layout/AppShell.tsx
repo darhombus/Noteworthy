@@ -1,8 +1,10 @@
 import Sidebar, { type SidebarUser } from './Sidebar'
 import TopBar from './TopBar'
 import InactivityModal from './InactivityModal'
-import SearchOverlay from './SearchOverlay'
+import SearchOverlayMount from './SearchOverlayMount'
+import LiveDataRefresh from '@/components/LiveDataRefresh'
 import VaultAutoLock from '@/components/privacy/VaultAutoLock'
+import NavigationPerfProbe from '@/components/perf/NavigationPerfProbe'
 import { SurfaceFromPath } from '@/lib/surface'
 
 interface AppShellProps {
@@ -28,13 +30,15 @@ export default function AppShell({ user, children }: AppShellProps) {
       </div>
 
       <InactivityModal />
+      <LiveDataRefresh userId={user.id} />
       {/* SearchOverlay lives globally (above the route-group layouts that
           set Surface), so wrap it in a pathname-derived provider so it can
           read useSurface() instead of sniffing pathname itself. */}
       <SurfaceFromPath>
-        <SearchOverlay />
+        <SearchOverlayMount />
       </SurfaceFromPath>
       <VaultAutoLock />
+      <NavigationPerfProbe />
     </div>
   )
 }

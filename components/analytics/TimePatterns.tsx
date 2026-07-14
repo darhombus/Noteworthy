@@ -1,9 +1,10 @@
-interface EntryPoint {
-  createdAt: string // ISO timestamp — already filtered to current month
-}
-
 interface TimePatternsProps {
-  entries: EntryPoint[]
+  counts: {
+    morning: number
+    noon: number
+    evening: number
+    night: number
+  }
   monthLabel: string // e.g. "April 2026"
 }
 
@@ -46,11 +47,8 @@ const PERIODS = [
   },
 ] as const
 
-export default function TimePatterns({ entries, monthLabel }: TimePatternsProps) {
-  // Count entries per period
-  const counts = PERIODS.map((p) => {
-    return entries.filter((e) => p.test(new Date(e.createdAt).getHours())).length
-  })
+export default function TimePatterns({ counts, monthLabel }: TimePatternsProps) {
+  const periodCounts = [counts.morning, counts.noon, counts.evening, counts.night]
 
   return (
     <div className="bg-white dark:bg-[#1E1E1E] rounded-xl border border-[#E0E0E0] dark:border-[#3A3A3A] p-6">
@@ -73,7 +71,7 @@ export default function TimePatterns({ entries, monthLabel }: TimePatternsProps)
                 {period.label}
               </span>
             </div>
-            <p className={`text-3xl font-bold ${period.countClass}`}>{counts[i]}</p>
+            <p className={`text-3xl font-bold ${period.countClass}`}>{periodCounts[i]}</p>
             <p className="text-[10px] text-[#9E9E9E] mt-1 leading-tight">{period.interval}</p>
           </div>
         ))}

@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
-import { isVaultOpen } from '@/lib/privacy/vault'
+import { getCurrentUserId } from '@/lib/auth/server'
+import { readVaultSession } from '@/lib/privacy/vault'
 import { SurfaceProvider } from '@/lib/surface'
 import VaultIdleGuard from '@/components/privacy/VaultIdleGuard'
 
@@ -20,19 +20,14 @@ export default async function HiddenLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const userId = await getCurrentUserId()
 
   let autoLockMinutes: number | null = null
-  if (user && (await isVaultOpen(user.id))) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('vault_auto_lock_minutes')
-      .eq('user_id', user.id)
-      .single()
-    autoLockMinutes = profile?.vault_auto_lock_minutes ?? null
+  if (userId) {
+    const vaultSession = await readVaultSession(userId)
+    if (vaultSession) {
+      autoLockMinutes = vaultSession.autoLockMinutes ?? 5
+    }
   }
 
   return (

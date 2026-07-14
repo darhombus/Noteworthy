@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 const DAY_HEADERS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface CalendarHeatmapProps {
-  entries: { entryDate: string }[] // last 365 days
+  dayCounts: Record<string, number> // YYYY-MM-DD -> count (last 365 days)
   initialYear: number
   initialMonth: number // 0-indexed
 }
@@ -43,7 +43,7 @@ const LEGEND = [
 ]
 
 export default function CalendarHeatmap({
-  entries,
+  dayCounts,
   initialYear,
   initialMonth,
 }: CalendarHeatmapProps) {
@@ -85,14 +85,11 @@ export default function CalendarHeatmap({
     else setYearMonth(year, month + 1)
   }
 
-  // Build date→count map for the displayed month
+  // Build date->count map for the displayed month.
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
-  const dayCounts: Record<string, number> = {}
-  for (const e of entries) {
-    if (e.entryDate.startsWith(monthStr)) {
-      dayCounts[e.entryDate] = (dayCounts[e.entryDate] ?? 0) + 1
-    }
-  }
+  const visibleMonthCounts = Object.fromEntries(
+    Object.entries(dayCounts).filter(([date]) => date.startsWith(monthStr)),
+  )
 
   // Build calendar grid
   const firstDay = new Date(year, month, 1)
@@ -159,7 +156,7 @@ export default function CalendarHeatmap({
             {week.map((day, di) => {
               if (day === null) return <div key={di} />
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              const count = dayCounts[dateStr] ?? 0
+              const count = visibleMonthCounts[dateStr] ?? 0
               const isToday = dateStr === todayStr
               return (
                 <div

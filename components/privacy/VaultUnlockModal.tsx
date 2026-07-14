@@ -12,7 +12,7 @@ type UnlockResult =
   | { error: string; retryAfterSeconds?: number }
 
 interface Props {
-  secretType: 'pin' | 'password'
+  secretType: 'pin' | 'password' | null
   onClose: () => void
   /** Which session to open on success.
    *
@@ -87,12 +87,16 @@ export default function VaultUnlockModal({
   }, [onClose, pending])
 
   const isCooling = cooldownSeconds > 0
+  const effectiveSecretType: 'pin' | 'password' =
+    secretType === 'pin' ? 'pin' : 'password'
+  const secretLabel =
+    secretType === 'pin' ? 'PIN' : secretType === 'password' ? 'password' : 'vault secret'
 
   function handleSubmit(value?: string) {
     if (isCooling) return
     const candidate = value ?? secret
     if (!candidate) {
-      setError(secretType === 'pin' ? 'Enter your 4-digit PIN' : 'Enter your password')
+      setError(secretType === 'pin' ? 'Enter your 4-digit PIN' : 'Enter your secret')
       setShakeKey((k) => k + 1)
       return
     }
@@ -145,8 +149,8 @@ export default function VaultUnlockModal({
             <p className="text-sm text-[#757575] dark:text-[#9E9E9E] mt-1">
               {subtitle ??
                 (mode === 'bin'
-                  ? `Enter your ${secretType === 'pin' ? 'PIN' : 'password'} to reveal the titles of hidden items in the recycle bin. The vault stays locked.`
-                  : `Enter your ${secretType === 'pin' ? 'PIN' : 'password'} to view hidden journals and entries.`)}
+                  ? `Enter your ${secretLabel} to reveal the titles of hidden items in the recycle bin. The vault stays locked.`
+                  : `Enter your ${secretLabel} to view hidden journals and entries.`)}
             </p>
           </div>
           <button
@@ -162,11 +166,11 @@ export default function VaultUnlockModal({
 
         <div>
           <label className="block text-xs font-semibold text-[#757575] dark:text-[#9E9E9E] mb-1.5">
-            {secretType === 'pin' ? 'PIN' : 'Password'}
+            {secretType === 'pin' ? 'PIN' : secretType === 'password' ? 'Password' : 'Secret'}
           </label>
           <SecretInput
             ref={inputRef}
-            lockType={secretType}
+            lockType={effectiveSecretType}
             value={secret}
             onChange={(v) => {
               setSecret(v)
@@ -175,9 +179,9 @@ export default function VaultUnlockModal({
             autoFocus
             showPassword={showSecret}
             onToggleShow={
-              secretType === 'password' ? () => setShowSecret((v) => !v) : undefined
+              effectiveSecretType === 'password' ? () => setShowSecret((v) => !v) : undefined
             }
-            placeholder={secretType === 'password' ? 'Enter password' : undefined}
+            placeholder={effectiveSecretType === 'password' ? 'Enter secret' : undefined}
             onEnter={(value) => handleSubmit(value)}
           />
         </div>

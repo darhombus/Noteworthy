@@ -41,7 +41,7 @@ function FieldError({ msg }: { msg: string }) {
 
 export default function AccountTab({ userId, email, fullName, avatarUrl }: Props) {
   const router = useRouter()
-  const { setProfileName, setProfileAvatarUrl } = useUIStore()
+  const { setProfile, setProfileAvatarUrl } = useUIStore()
 
   // ─── Profile Picture ───────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -98,7 +98,7 @@ export default function AccountTab({ userId, email, fullName, avatarUrl }: Props
     if (result.error) {
       setNameError(result.error)
     } else {
-      setProfileName(trimmed)
+      setProfile({ userId, name: trimmed, avatarUrl: currentAvatar })
       toast.success('Display name updated')
     }
   }

@@ -83,14 +83,10 @@ export async function GET(request: NextRequest) {
   const params = parsed.data
 
   const supabase = await createClient()
-  // proxy.ts has already validated and refreshed the session for this
-  // request — calling auth.getUser() here repeats a network round trip
-  // to Supabase Auth (~150ms). Read the session locally instead. RLS is
-  // still the security boundary on every query below.
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const userId = session?.user.id
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = user?.id
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

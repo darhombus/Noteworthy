@@ -1,7 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser, getCurrentProfile } from '@/lib/auth/server'
 import {
   STORAGE_QUOTA_BYTES,
-  getUserStorageUsage,
+  getUserStorageBreakdown,
 } from '@/lib/storage/quota'
 import SettingsTabs from '@/components/settings/SettingsTabs'
 import AccountTab from '@/components/settings/AccountTab'
@@ -20,18 +20,12 @@ export default async function SettingsPage({ searchParams }: Props) {
   const tab: Tab =
     rawTab === 'preferences' || rawTab === 'privacy' ? rawTab : 'account'
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const user = await getCurrentUser()
   if (!user) return null
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, avatar_url, preferences, vault_secret_type, vault_auto_lock_minutes')
-    .eq('user_id', user.id)
-    .single()
+  // Profile is shared with the layout via the request-scoped React cache,
+  // so this resolves without an extra round-trip.
+  const profile = await getCurrentProfile()
 
   const vaultSecretType = (profile?.vault_secret_type ?? null) as 'pin' | 'password' | null
   const vaultAutoLockMinutes = profile?.vault_auto_lock_minutes ?? 5
@@ -43,24 +37,17 @@ export default async function SettingsPage({ searchParams }: Props) {
       ? (profile.preferences as UserPreferences)
       : {}
 
-  // Storage usage (needed for privacy tab)
-  const currentUsage = await getUserStorageUsage(user.id)
+  // Privacy-only data: avoid running heavy media scans on non-privacy tabs.
   const storageLimit = STORAGE_QUOTA_BYTES
-
-  // Image vs video breakdown
+  let currentUsage = 0
   let imageUsage = 0
   let videoUsage = 0
-  const { data: breakdown } = await supabase
-    .from('media')
-    .select('file_type, file_size, entries!inner(journal_id, journals!inner(user_id))')
-    .eq('entries.journals.user_id', user.id)
 
-  if (breakdown) {
-    for (const row of breakdown) {
-      const size = Number(row.file_size ?? 0)
-      if (row.file_type === 'video') videoUsage += size
-      else imageUsage += size
-    }
+  if (tab === 'privacy') {
+    const breakdown = await getUserStorageBreakdown(user.id)
+    currentUsage = breakdown.currentUsage
+    imageUsage = breakdown.imageUsage
+    videoUsage = breakdown.videoUsage
   }
 
   return (

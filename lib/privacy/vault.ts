@@ -6,6 +6,7 @@
  * never inspects the cookie itself.
  */
 
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { createHmac, timingSafeEqual } from 'crypto'
 
@@ -16,6 +17,8 @@ interface VaultPayload {
   uid: string
   /** Unix epoch milliseconds at which this session expires. */
   exp: number
+  /** Auto-lock minutes at the time of unlock (optional for legacy cookies). */
+  alm?: number
 }
 
 function getJwtSecret(): string {
@@ -82,7 +85,7 @@ function verify(token: string): VaultPayload | null {
 export async function openVault(userId: string, minutes: number): Promise<void> {
   const maxAgeSeconds = Math.max(60, Math.floor(minutes * 60))
   const exp = Date.now() + maxAgeSeconds * 1000
-  const token = sign({ uid: userId, exp })
+  const token = sign({ uid: userId, exp, alm: minutes })
 
   const store = await cookies()
   store.set(VAULT_COOKIE_NAME, token, {
@@ -97,16 +100,37 @@ export async function openVault(userId: string, minutes: number): Promise<void> 
 /**
  * Returns true iff the cookie is present, the HMAC verifies, the userId
  * matches, and the expiry is in the future.
+ *
+ * Wrapped in React's `cache()` so repeat calls within the same server
+ * render (e.g. page calls it, then the scope factory re-checks it) are
+ * deduped. The cookie is httpOnly and can only be set by Server Actions
+ * / Route Handlers, never mid-render, so the cached value is consistent.
  */
-export async function isVaultOpen(userId: string): Promise<boolean> {
+export const isVaultOpen = cache(async (userId: string): Promise<boolean> => {
+  const payload = await readVaultSession(userId)
+  return payload !== null
+})
+
+export interface VaultSession {
+  userId: string
+  expiresAt: number
+  autoLockMinutes: number | null
+}
+
+export async function readVaultSession(userId: string): Promise<VaultSession | null> {
   const store = await cookies()
   const raw = store.get(VAULT_COOKIE_NAME)?.value
-  if (!raw) return false
+  if (!raw) return null
   const payload = verify(raw)
-  if (!payload) return false
-  if (payload.uid !== userId) return false
-  if (payload.exp <= Date.now()) return false
-  return true
+  if (!payload) return null
+  if (payload.uid !== userId) return null
+  if (payload.exp <= Date.now()) return null
+  return {
+    userId: payload.uid,
+    expiresAt: payload.exp,
+    autoLockMinutes:
+      typeof payload.alm === 'number' && Number.isFinite(payload.alm) ? payload.alm : null,
+  }
 }
 
 /**

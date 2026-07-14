@@ -21,8 +21,11 @@ interface UIState {
   hiddenVaultLocked: boolean
   setHiddenVaultLocked: (locked: boolean) => void
   // Profile data — synced from server on mount, updatable by settings
+  profileUserId: string | null
   profileName: string
   profileAvatarUrl: string | null
+  setProfile: (payload: { userId: string; name: string; avatarUrl: string | null }) => void
+  clearProfile: () => void
   setProfileName: (name: string) => void
   setProfileAvatarUrl: (url: string | null) => void
   // Breadcrumb: maps a dynamic-route id (journalId, entryId, …) to its
@@ -46,8 +49,12 @@ export const useUIStore = create<UIState>((set) => ({
   closeSearch: () => set({ isSearchOpen: false }),
   hiddenVaultLocked: false,
   setHiddenVaultLocked: (locked) => set({ hiddenVaultLocked: locked }),
+  profileUserId: null,
   profileName: '',
   profileAvatarUrl: null,
+  setProfile: ({ userId, name, avatarUrl }) =>
+    set({ profileUserId: userId, profileName: name, profileAvatarUrl: avatarUrl }),
+  clearProfile: () => set({ profileUserId: null, profileName: '', profileAvatarUrl: null }),
   setProfileName: (name) => set({ profileName: name }),
   setProfileAvatarUrl: (url) => set({ profileAvatarUrl: url }),
   breadcrumbTitles: {},

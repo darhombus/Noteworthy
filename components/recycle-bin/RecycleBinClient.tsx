@@ -77,12 +77,14 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
   // from this surface). `requires_vault && !locked` is the unredacted
   // form — if any such row exists, the vault is open and revealed it.
   const hasRevealedVaultRows = items.some((i) => i.requires_vault && !i.locked)
+  const unlockHint =
+    vaultSecretType === 'pin'
+      ? 'Enter your PIN to reveal them.'
+      : vaultSecretType === 'password'
+        ? 'Enter your password to reveal them.'
+        : 'Enter your vault secret to reveal them.'
 
   function requestUnlock() {
-    if (!vaultSecretType) {
-      toast.error('No vault has been configured.')
-      return
-    }
     setShowUnlock(true)
   }
 
@@ -186,9 +188,7 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
             {lockedCount} {lockedCount === 1 ? 'item is' : 'items are'} from your
             Hidden vault.{' '}
             <span className="font-semibold underline">
-              {vaultSecretType === 'pin'
-                ? 'Enter your PIN to reveal them.'
-                : 'Enter your password to reveal them.'}
+              {unlockHint}
             </span>
           </span>
         </button>
@@ -274,7 +274,9 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
                           title={
                             vaultSecretType === 'pin'
                               ? 'Enter PIN to reveal'
-                              : 'Enter password to reveal'
+                              : vaultSecretType === 'password'
+                                ? 'Enter password to reveal'
+                                : 'Enter vault secret to reveal'
                           }
                         >
                           <span className="max-w-[160px] truncate">{item.title}</span>
@@ -312,7 +314,9 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
                           item.locked
                             ? vaultSecretType === 'pin'
                               ? 'Enter PIN to restore'
-                              : 'Enter password to restore'
+                              : vaultSecretType === 'password'
+                                ? 'Enter password to restore'
+                                : 'Enter vault secret to restore'
                             : undefined
                         }
                         className="rounded-md px-3 py-1.5 text-xs font-medium text-[#1976D2] hover:bg-blue-50 dark:hover:bg-[#1E3A5F]/30 disabled:cursor-not-allowed disabled:text-[#9E9E9E] disabled:opacity-50 disabled:hover:bg-transparent dark:disabled:text-[#616161] dark:disabled:hover:bg-transparent"
@@ -326,7 +330,9 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
                           item.locked
                             ? vaultSecretType === 'pin'
                               ? 'Enter PIN to delete'
-                              : 'Enter password to delete'
+                              : vaultSecretType === 'password'
+                                ? 'Enter password to delete'
+                                : 'Enter vault secret to delete'
                             : undefined
                         }
                         className="rounded-md px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:cursor-not-allowed disabled:text-[#9E9E9E] disabled:opacity-50 disabled:hover:bg-transparent dark:disabled:text-[#616161] dark:disabled:hover:bg-transparent"
@@ -357,7 +363,7 @@ export default function RecycleBinClient({ initialItems, vaultSecretType }: Prop
         />
       )}
 
-      {showUnlock && vaultSecretType && (
+      {showUnlock && (
         <VaultUnlockModal
           secretType={vaultSecretType}
           mode="bin"

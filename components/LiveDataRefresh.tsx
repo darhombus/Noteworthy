@@ -1,51 +1,118 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-/**
- * Invalidates the current route's server-rendered data whenever any of the
- * user's writable domain tables change (entries, journals, tags). Mount on
- * any page whose server component reads from one of these tables so the page
- * auto-refreshes when the user mutates data in another tab or device.
- *
- * Every table subscribed here must also be in the `supabase_realtime`
- * Postgres publication — see migrations 009 and 010. A missing publication
- * entry makes the subscription silently receive zero events.
- *
- * For per-entry editor sync (where a full route refresh would disturb the
- * cursor), use `useEntryRealtime` instead — it scopes to a single row and
- * applies the payload in place.
- */
-export default function LiveDataRefresh() {
+interface LiveDataRefreshProps {
+  userId: string
+}
+
+// Opt-in by env var. Global router.refresh() calls clear the App Router client
+// cache, so leaving this always-on can make navigation feel perpetually cold.
+const LIVE_REFRESH_ENABLED = process.env.NEXT_PUBLIC_NW_LIVE_REFRESH === '1'
+
+export default function LiveDataRefresh({ userId }: LiveDataRefreshProps) {
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
+    if (!LIVE_REFRESH_ENABLED) return
+
     const supabase = createClient()
-    const refresh = () => router.refresh()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let visibilityRefreshTimer: ReturnType<typeof setTimeout> | null = null
+    let pendingWhileHidden = false
+    let lastRefreshAt = 0
+    let lastRouteChangeAt = Date.now()
+
+    const DEBOUNCE_MS = 400
+    const MIN_REFRESH_GAP_MS = 2500
+    const NAVIGATION_GUARD_MS = 1500
+
+    const isLiveRoute = () =>
+      pathname.startsWith('/journals') ||
+      pathname.startsWith('/hidden') ||
+      pathname.startsWith('/tags') ||
+      pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/analytics') ||
+      pathname.startsWith('/recycle-bin')
+
+    const runRefresh = () => {
+      // Avoid forcing a second server pass immediately after a transition.
+      if (Date.now() - lastRouteChangeAt < NAVIGATION_GUARD_MS) return
+
+      const now = Date.now()
+      const elapsed = now - lastRefreshAt
+      if (elapsed < MIN_REFRESH_GAP_MS) {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          timer = null
+          lastRefreshAt = Date.now()
+          router.refresh()
+        }, MIN_REFRESH_GAP_MS - elapsed)
+        return
+      }
+
+      lastRefreshAt = now
+      router.refresh()
+    }
+
+    const refresh = () => {
+      if (!isLiveRoute()) return
+      if (document.visibilityState !== 'visible') {
+        pendingWhileHidden = true
+        return
+      }
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        runRefresh()
+      }, DEBOUNCE_MS)
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || !pendingWhileHidden) return
+      pendingWhileHidden = false
+      if (visibilityRefreshTimer) clearTimeout(visibilityRefreshTimer)
+      visibilityRefreshTimer = setTimeout(() => {
+        visibilityRefreshTimer = null
+        runRefresh()
+      }, 150)
+    }
+
+    // Mark route transition boundaries so updates that fire right after
+    // navigation don't trigger duplicate route fetches.
+    lastRouteChangeAt = Date.now()
 
     const channel = supabase
-      .channel('live-data')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journals' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tags' }, refresh)
+      .channel(`live-data:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'entries', filter: `user_id=eq.${userId}` },
+        refresh,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'journals', filter: `user_id=eq.${userId}` },
+        refresh,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tags', filter: `user_id=eq.${userId}` },
+        refresh,
+      )
       .subscribe()
 
-    // Safety net: refresh when the tab regains focus. Background tabs can miss
-    // realtime events (throttled sockets, suspended clients after long idles),
-    // so reconciling on return guarantees the user never sees stale data after
-    // switching back from another tab.
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') refresh()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
+      if (timer) clearTimeout(timer)
+      if (visibilityRefreshTimer) clearTimeout(visibilityRefreshTimer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       supabase.removeChannel(channel)
-      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [router])
+  }, [pathname, router, userId])
 
   return null
 }

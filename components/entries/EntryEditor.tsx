@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { ArrowLeft, MoreHorizontal, Eye, Pencil, Calendar } from 'lucide-react'
 import { EditorContent } from '@tiptap/react'
 import { useSurface } from '@/lib/surface'
@@ -16,11 +17,32 @@ import ExportModal from '@/components/ExportModal'
 import TagInput from './TagInput'
 import TagChip from '@/components/ui/TagChip'
 import DatePicker from './DatePicker'
-import EditorToolbar from '@/components/editor/EditorToolbar'
-import ImageUploadModal from '@/components/editor/ImageUploadModal'
 import ImageLightbox from '@/components/editor/ImageLightbox'
-import VideoUploadModal from '@/components/editor/VideoUploadModal'
 import { useTiptapEditor } from '@/components/editor/useTiptapEditor'
+
+// Defer Uppy (Dashboard + XHRUpload) — ~150KB combined and only needed once
+// the user clicks the toolbar's image/video button. ssr:false avoids the
+// server bundling Uppy into the entry route's first payload.
+const ImageUploadModal = dynamic(() => import('@/components/editor/ImageUploadModal'), {
+  ssr: false,
+})
+const VideoUploadModal = dynamic(() => import('@/components/editor/VideoUploadModal'), {
+  ssr: false,
+})
+
+// Defer the formatting toolbar. The editor body is interactive without it
+// (StarterKit binds Cmd+B/Cmd+I/etc. on the editor itself), so users can
+// start typing while this chunk loads. The placeholder reserves the
+// toolbar's height (~40px) to prevent layout shift when it swaps in.
+const EditorToolbar = dynamic(() => import('@/components/editor/EditorToolbar'), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="h-10 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-surface)] shadow-sm"
+      aria-hidden="true"
+    />
+  ),
+})
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Database } from '@/types/supabase'

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Menu, Plus, ChevronRight, Home, Search, Lock } from 'lucide-react'
 import { useUIStore } from '@/store/useUIStore'
+import { prefetchSearchOverlay } from './SearchOverlayLazy'
 
 // Static top-level routes. Anything not matched here is treated as a dynamic
 // segment and resolved against the breadcrumb-title store (see BreadcrumbTitle).
@@ -33,6 +34,13 @@ const STRUCTURAL_SEGMENTS = new Set(['entries'])
 interface Crumb {
   label: string
   href: string | null  // null = current page, not clickable
+}
+
+function isOpaqueId(segment: string): boolean {
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  if (uuidLike.test(segment)) return true
+  // Fallback for slugless random ids while title registration catches up.
+  return /^[a-z0-9]{18,}$/i.test(segment)
 }
 
 function buildCrumbs(pathname: string, titles: Record<string, string>): Crumb[] {
@@ -72,6 +80,11 @@ function fallbackLabel(segment: string, parts: string[], i: number): string {
   // Dynamic id with no registered title yet (brief flash during navigation)
   if (parts[i - 1] === 'entries') return 'Entry'
   if (parts[i - 1] === 'journals') return 'Journal'
+  if (parts[i - 1] === 'hidden' && isOpaqueId(segment)) return 'Journal'
+  if (parts[0] === 'hidden' && i >= 2 && isOpaqueId(segment)) return 'Entry'
+  if (parts[i - 1] === 'entry' && isOpaqueId(segment)) return 'Entry'
+  if (parts[i - 1] === 'standalone' && isOpaqueId(segment)) return 'Entry'
+  if (isOpaqueId(segment)) return 'Item'
   return segment.charAt(0).toUpperCase() + segment.slice(1)
 }
 
@@ -125,6 +138,7 @@ export default function TopBar() {
           <li className="flex items-center flex-shrink-0">
             <Link
               href="/dashboard"
+              prefetch={false}
               aria-label="Home"
               className="p-1 -m-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none transition-colors"
             >
@@ -139,6 +153,7 @@ export default function TopBar() {
                 {crumb.href && !isLast ? (
                   <Link
                     href={crumb.href}
+                    prefetch={false}
                     className="px-1.5 py-0.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none transition-colors truncate max-w-[180px]"
                   >
                     {crumb.label}
@@ -180,6 +195,8 @@ export default function TopBar() {
             <>
               <button
                 onClick={openSearch}
+                onPointerEnter={prefetchSearchOverlay}
+                onFocus={prefetchSearchOverlay}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#1976D2]/30 dark:border-[#1E3A5F] bg-[#1976D2]/10 dark:bg-[#1E3A5F] text-[#1976D2] dark:text-[#64B5F6] text-sm font-medium hover:bg-[#1976D2]/15 dark:hover:bg-[#234670] transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
                 aria-label="Search vault (Ctrl+K)"
                 title="Search vault"
@@ -201,6 +218,8 @@ export default function TopBar() {
           <>
             <button
               onClick={openSearch}
+              onPointerEnter={prefetchSearchOverlay}
+              onFocus={prefetchSearchOverlay}
               className="p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[#EEEEEE] dark:hover:bg-[#2C2C2C] focus-visible:ring-2 focus-visible:ring-[#1976D2] focus-visible:outline-none"
               aria-label="Search (Ctrl+K)"
             >

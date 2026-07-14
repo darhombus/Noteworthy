@@ -1,34 +1,18 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/server'
 import { isBinRevealed } from '@/lib/privacy/binReveal'
 import RecycleBinClient from '@/components/recycle-bin/RecycleBinClient'
 import type { RecycleBinItem } from '@/components/recycle-bin/RecycleBinClient'
-import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 export default async function RecycleBinPage() {
+  const userId = await getCurrentUserId()
+  if (!userId) redirect('/login')
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  // Redaction is gated SOLELY by the bin-reveal cookie. Opening the
-  // vault elsewhere does not auto-reveal the bin — the two states
-  // are intentionally disjoint, so a user with an open /hidden tab
-  // who navigates to the bin still has to enter their secret to see
-  // the titles. (The same secret unlocks both, but each surface
-  // grants only its own scope.) Items themselves are always listed
-  // — only the titles redact.
-  const reveal = await isBinRevealed(user.id)
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('vault_secret_type')
-    .eq('user_id', user.id)
-    .single()
-  const vaultSecretType =
-    (profile?.vault_secret_type as 'pin' | 'password' | null) ?? null
+  // Redaction is gated only by the bin-reveal cookie. Opening the
+  // vault elsewhere does not auto-reveal the bin.
+  const reveal = await isBinRevealed(userId)
 
   const now = Date.now()
   const daysRemaining = (deletedAt: string) =>
@@ -39,11 +23,11 @@ export default async function RecycleBinPage() {
       .from('entries')
       .select('entry_id, title, deleted_at, is_hidden, journals!inner(title, is_hidden, user_id)')
       .not('deleted_at', 'is', null)
-      .eq('journals.user_id', user.id),
+      .eq('journals.user_id', userId),
     supabase
       .from('journals')
       .select('journal_id, title, deleted_at, is_hidden')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .not('deleted_at', 'is', null),
   ])
 
@@ -91,10 +75,9 @@ export default async function RecycleBinPage() {
 
   return (
     <>
-      <LiveDataRefresh />
       <RecycleBinClient
         initialItems={initialItems}
-        vaultSecretType={vaultSecretType}
+        vaultSecretType={null}
       />
     </>
   )

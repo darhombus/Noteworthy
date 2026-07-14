@@ -16,6 +16,7 @@
  * Cookie shape, TTL, and verification mirror vault.ts exactly.
  */
 
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { createHmac, timingSafeEqual } from 'crypto'
 
@@ -98,7 +99,13 @@ export async function openBinReveal(userId: string, minutes: number): Promise<vo
   })
 }
 
-export async function isBinRevealed(userId: string): Promise<boolean> {
+/**
+ * React-cached so repeat calls within the same server render (e.g. the
+ * SSR recycle bin page reads it, then a server component sub-tree reads
+ * it again) are free. Cookie state can only change via Server Actions /
+ * Route Handlers, never mid-render.
+ */
+export const isBinRevealed = cache(async (userId: string): Promise<boolean> => {
   const store = await cookies()
   const raw = store.get(BIN_REVEAL_COOKIE_NAME)?.value
   if (!raw) return false
@@ -107,7 +114,7 @@ export async function isBinRevealed(userId: string): Promise<boolean> {
   if (payload.uid !== userId) return false
   if (payload.exp <= Date.now()) return false
   return true
-}
+})
 
 export async function closeBinReveal(): Promise<void> {
   const store = await cookies()

@@ -67,6 +67,10 @@ interface IndexJournal {
 }
 
 interface SnapshotResponse {
+  /** Present on 200 responses when the hidden vault is locked. The overlay
+   *  treats this as "loaded but locked" so it can show the lock placeholder
+   *  without surfacing a red 401 in DevTools on every overlay open. */
+  status?: 'locked'
   journals: Array<{
     journal_id: string
     title: string
@@ -258,14 +262,20 @@ export default function SearchOverlay() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [openSearch])
 
-  // Prefetch the snapshot in the background as soon as the AppShell
-  // mounts (and again whenever the surface changes). By the time the
-  // user actually hits Cmd+K the snapshot is already in memory, so the
-  // overlay never has to render a loading spinner — typing is
-  // synchronous from the very first keystroke.
+  // Fetch the snapshot lazily — only when the user actually opens the
+  // overlay (Cmd+K / Ctrl+K / clicking the TopBar search button), or when
+  // the surface flips while the overlay is already open.
   //
-  // Snapshot is keyed off the active surface; switching /journals →
-  // /hidden refetches because the visible set is different.
+  // Previously this ran in a mount effect on EVERY (app) route because
+  // SearchOverlay sits inside AppShell. That fired a full GET
+  // /api/search/index per navigation — an RPC over every entry the user
+  // owns plus a journals query, then hundreds of rows of JSON returned.
+  // For users with non-trivial data this was the single dominant cost
+  // per click. Deferring to overlay-open eliminates it entirely from the
+  // navigation critical path; the first keystroke after opening still
+  // works because the snapshot finishes loading well before the user
+  // can type their first character (the input autofocus + this fetch
+  // race, and on any reasonable connection the fetch wins).
   const fetchSnapshot = useCallback(() => {
     fetchAbortRef.current?.abort()
     const controller = new AbortController()
@@ -287,18 +297,9 @@ export default function SearchOverlay() {
     fetch(`/api/search/index?surface=${surface}`, { signal: controller.signal })
       .then(async (res) => {
         if (res.status === 401) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string }
-          if (body.error === 'vault_locked') {
-            // Mark as a "loaded, but locked" snapshot so the overlay
-            // shows the lock state rather than the empty placeholder.
-            setVaultLocked(true)
-            setSnapshot({ journals: [], entries: [] })
-            snapshotSurfaceRef.current = surface
-            return
-          }
-          // Not signed in — let proxy.ts handle the redirect when the
-          // user actually navigates. No need to push from a background
-          // prefetch.
+          // The route only returns 401 now when the session itself is gone.
+          // Vault-locked is a 200 + { status: 'locked' }. Let proxy.ts handle
+          // the redirect when the user actually navigates.
           return
         }
         if (!res.ok) {
@@ -306,6 +307,14 @@ export default function SearchOverlay() {
           return
         }
         const data = (await res.json()) as SnapshotResponse
+        if (data.status === 'locked') {
+          // Loaded successfully, but the hidden vault is closed. Show the
+          // lock placeholder rather than a "no results" empty state.
+          setVaultLocked(true)
+          setSnapshot({ journals: [], entries: [] })
+          snapshotSurfaceRef.current = surface
+          return
+        }
         const entries: IndexEntry[] = data.entries.map((e) => {
           const tags = Array.isArray(e.tags) ? e.tags : []
           // Include tag names in the search haystack so plain-text
@@ -352,24 +361,35 @@ export default function SearchOverlay() {
       })
   }, [surface])
 
-  useEffect(() => {
-    if (snapshot && snapshotSurfaceRef.current === surface) return
-    fetchSnapshot()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface])
-
-  // The snapshot is memoized per-surface, so an unlock that happens
-  // *after* a previously-cached "vault_locked" prefetch wouldn't trigger
-  // the surface effect above (surface didn't change). Re-check on the
-  // rising edge of every overlay open while we still hold a locked
-  // snapshot. Tracking prev-isSearchOpen via a ref means the effect
-  // doesn't loop if the fetch returns vault_locked again.
+  // Trigger the snapshot fetch only when the overlay actually opens (or
+  // when the surface flips while it's already open). The previous
+  // surface-driven effect ran on every (app)-route mount because
+  // SearchOverlay sits inside AppShell, which made every navigation pay
+  // for a full /api/search/index roundtrip the user had not asked for.
+  //
+  // We still re-fetch if the cached snapshot belongs to a different
+  // surface OR if the cache is empty because the previous fetch returned
+  // vault_locked and the user has since unlocked.
   const prevSearchOpenRef = useRef(false)
   useEffect(() => {
     const justOpened = isSearchOpen && !prevSearchOpenRef.current
     prevSearchOpenRef.current = isSearchOpen
-    if (justOpened && vaultLocked) fetchSnapshot()
-  }, [isSearchOpen, vaultLocked, fetchSnapshot])
+    if (!justOpened) return
+    const haveFreshSnapshot =
+      snapshot && snapshotSurfaceRef.current === surface && !vaultLocked
+    if (haveFreshSnapshot) return
+    fetchSnapshot()
+  }, [isSearchOpen, surface, snapshot, vaultLocked, fetchSnapshot])
+
+  // If the surface flips WHILE the overlay is open, refetch immediately
+  // — the user is staring at it and a stale-surface snapshot would leak
+  // results from the wrong scope.
+  useEffect(() => {
+    if (!isSearchOpen) return
+    if (snapshotSurfaceRef.current === surface) return
+    fetchSnapshot()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surface, isSearchOpen])
 
   // Focus the input on open. The snapshot prefetch above runs in the
   // background, so by the time the overlay opens it's almost always

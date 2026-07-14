@@ -1,9 +1,11 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import bcrypt from 'bcryptjs'
 import { createClient } from '@/lib/supabase/server'
+import { getProfileCacheTag } from '@/lib/auth/server'
+import { clearHotCache } from '@/lib/perf/hot-cache'
 import { closeVault, isVaultOpen, openVault } from '@/lib/privacy/vault'
 import { closeBinReveal, openBinReveal } from '@/lib/privacy/binReveal'
 
@@ -15,8 +17,8 @@ const ALLOWED_AUTO_LOCK_MINUTES = new Set([1, 5, 15, 30])
 
 // ---------------------------------------------------------------------------
 // In-memory rate limiter for unlock attempts.
-// 5 failed attempts within 5 minutes → 60s cooldown. Per the spec, this is
-// anti-fat-finger, not anti-attacker — the Map is process-local and resets
+// 5 failed attempts within 5 minutes â†’ 60s cooldown. Per the spec, this is
+// anti-fat-finger, not anti-attacker â€” the Map is process-local and resets
 // on deploy. Good enough.
 // ---------------------------------------------------------------------------
 
@@ -111,6 +113,16 @@ async function requireUserId(): Promise<string> {
   return user.id
 }
 
+function invalidateProfileCache(userId: string): void {
+  revalidateTag(getProfileCacheTag(userId), 'max')
+  // Also drop the in-process hot-cache entries for this user. revalidateTag
+  // only flushes the App Router's cache; withHotCache is a separate
+  // process-local Map (see lib/perf/hot-cache.ts) and would otherwise keep
+  // serving stale vault_secret_type / full profile for up to its TTL.
+  clearHotCache(`profile:full:${userId}`)
+  clearHotCache(`profile:secret-type:${userId}`)
+}
+
 // ---------------------------------------------------------------------------
 // Vault secret lifecycle
 // ---------------------------------------------------------------------------
@@ -124,7 +136,7 @@ export async function setVaultSecret(
   const profile = await loadVaultProfile(userId)
   if ('error' in profile) return profile
   if (profile.vault_secret_type !== null) {
-    return { error: 'Vault secret already set — use changeVaultSecret instead' }
+    return { error: 'Vault secret already set â€” use changeVaultSecret instead' }
   }
 
   const shapeError = validateSecretShape(secretType, secret)
@@ -140,6 +152,7 @@ export async function setVaultSecret(
   if (error) return { error: error.message }
 
   await openVault(userId, profile.vault_auto_lock_minutes)
+  invalidateProfileCache(userId)
   revalidatePath('/settings')
   return { success: true }
 }
@@ -154,7 +167,7 @@ export async function changeVaultSecret(
   const profile = await loadVaultProfile(userId)
   if ('error' in profile) return profile
   if (!profile.vault_secret_type || !profile.vault_secret_hash) {
-    return { error: 'No vault secret to change — set one first' }
+    return { error: 'No vault secret to change â€” set one first' }
   }
 
   const ok = await bcrypt.compare(currentSecret, profile.vault_secret_hash)
@@ -172,9 +185,10 @@ export async function changeVaultSecret(
     .eq('user_id', userId)
   if (error) return { error: error.message }
 
-  // Vault stays in whatever state it was. Don't touch the cookie — if it
+  // Vault stays in whatever state it was. Don't touch the cookie â€” if it
   // was open, the user keeps their unlock window; if it was locked, this
   // call doesn't grant a new session.
+  invalidateProfileCache(userId)
   revalidatePath('/settings')
   return { success: true }
 }
@@ -211,7 +225,7 @@ export async function removeVaultSecret(
     .select('journal_id')
   if (journalsError) return { error: journalsError.message }
 
-  // Entries don't carry user_id directly — scope by the user's journal IDs.
+  // Entries don't carry user_id directly â€” scope by the user's journal IDs.
   const { data: ownedJournals, error: ownedError } = await supabase
     .from('journals')
     .select('journal_id')
@@ -239,6 +253,7 @@ export async function removeVaultSecret(
 
   await closeVault()
   clearUnlockAttempts(userId)
+  invalidateProfileCache(userId)
   revalidatePath('/journals')
   revalidatePath('/hidden')
   revalidatePath('/settings')
@@ -260,7 +275,7 @@ type UnlockResult =
 export async function unlockVault(secret: string): Promise<UnlockResult> {
   const userId = await requireUserId()
 
-  // Rate limiter — anti-fat-finger only.
+  // Rate limiter â€” anti-fat-finger only.
   const limit = checkRateLimit(userId)
   if (!limit.ok) {
     return {
@@ -297,12 +312,12 @@ export async function lockVault(): Promise<ActionResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Recycle-bin reveal — separate from the vault session
+// Recycle-bin reveal â€” separate from the vault session
 // ---------------------------------------------------------------------------
 
 /**
  * Validate the user's vault secret and open a *bin-reveal* session.
- * Does NOT touch the actual vault cookie — `/hidden` still requires
+ * Does NOT touch the actual vault cookie â€” `/hidden` still requires
  * a real `unlockVault` to access. The bin-reveal cookie only lifts
  * the redaction on the recycle-bin listing.
  *
@@ -340,7 +355,7 @@ export async function revealBin(secret: string): Promise<UnlockResult> {
 }
 
 /**
- * Close the bin-reveal session. Independent of the vault — this does
+ * Close the bin-reveal session. Independent of the vault â€” this does
  * not lock /hidden access if the vault is also open.
  */
 export async function hideBin(): Promise<ActionResult> {
@@ -355,10 +370,10 @@ export async function hideBin(): Promise<ActionResult> {
  * Called by the client `VaultIdleGuard` on user activity so the unlock
  * window slides forward as long as the user is interacting with the
  * tab. Returns `vault_locked` if the cookie has already expired or was
- * never present — the caller should redirect to /hidden in that case.
+ * never present â€” the caller should redirect to /hidden in that case.
  *
  * The cookie's `exp` is the source of truth for "is the vault open?"
- * — every server-side guard reads it via `isVaultOpen()` — so a fresh
+ * â€” every server-side guard reads it via `isVaultOpen()` â€” so a fresh
  * touch is the only way to extend the unlock window without forcing
  * the user to re-enter their secret.
  */
@@ -375,7 +390,7 @@ export async function touchVault(): Promise<ActionResult> {
 
 /**
  * Update the vault auto-lock window. Allowed values: 1, 5, 15, 30 (minutes).
- * Reflects on subsequent unlocks — does NOT extend the current cookie.
+ * Reflects on subsequent unlocks â€” does NOT extend the current cookie.
  */
 export async function setVaultAutoLockMinutes(minutes: number): Promise<ActionResult> {
   const userId = await requireUserId()
@@ -391,12 +406,13 @@ export async function setVaultAutoLockMinutes(minutes: number): Promise<ActionRe
     .eq('user_id', userId)
   if (error) return { error: error.message }
 
+  invalidateProfileCache(userId)
   revalidatePath('/settings')
   return { success: true }
 }
 
 // ---------------------------------------------------------------------------
-// Hide / unhide — journals and entries
+// Hide / unhide â€” journals and entries
 // ---------------------------------------------------------------------------
 
 export async function hideJournal(journalId: string): Promise<ActionResult> {
@@ -417,7 +433,7 @@ export async function hideJournal(journalId: string): Promise<ActionResult> {
   if (error) return { error: error.message }
 
   // Hiding/unhiding mutates the *visible* set on every public surface
-  // that aggregates entries or tags — Tags, Dashboard, Analytics, and
+  // that aggregates entries or tags â€” Tags, Dashboard, Analytics, and
   // Recycle Bin. Without revalidating each one their SSR caches would
   // briefly show a tag/entry that just left the public scope, which
   // looks like a privacy leak even though the underlying data is
@@ -449,7 +465,7 @@ export async function hideEntry(entryId: string): Promise<ActionResult> {
 
   // Reject hide-from-inside-a-hidden-journal at the action layer too.
   // Per the model rules, an entry inside a hidden journal cannot be
-  // individually hidden — the journal-level flag is already covering it,
+  // individually hidden â€” the journal-level flag is already covering it,
   // and recording another flag would silently leave the entry hidden
   // after its parent is later unhidden. The UI never offers this path,
   // but the server enforces it as a safety net.
@@ -511,3 +527,5 @@ export async function unhideEntry(entryId: string): Promise<ActionResult> {
   invalidatePublicSurfaces()
   return { success: true }
 }
+
+

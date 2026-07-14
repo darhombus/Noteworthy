@@ -16,10 +16,7 @@ import { isVaultOpen } from '@/lib/privacy/vault'
  *   • public  → entries.is_hidden=false AND journals.is_hidden=false
  *   • hidden  → vault must be open; entries.is_hidden=true OR journals.is_hidden=true
  *
- * The endpoint trusts the session that proxy.ts has already validated —
- * auth.getSession() is local-cookie-only, no extra round trip to the
- * Supabase auth server. RLS remains the security boundary on the
- * underlying table reads.
+ * RLS remains the security boundary on the underlying table reads.
  */
 
 const querySchema = z.object({
@@ -65,15 +62,20 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient()
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const userId = session?.user.id
+    data: { user },
+  } = await supabase.auth.getUser()
+  const userId = user?.id
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   if (surface === 'hidden' && !(await isVaultOpen(userId))) {
-    return NextResponse.json({ error: 'vault_locked' }, { status: 401 })
+    // Not an unauthorized condition — the user IS authenticated. The vault
+    // is the gate, and "locked" is a normal app state. Return 200 with a
+    // status discriminator so the overlay can render its locked placeholder
+    // without DevTools flagging a red 401 on every overlay open / surface
+    // flip into hidden.
+    return NextResponse.json({ status: 'locked', journals: [], entries: [] })
   }
 
   const journalSurfaceMatch = surface === 'hidden'

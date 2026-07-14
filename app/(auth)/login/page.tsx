@@ -27,9 +27,10 @@ export default function LoginPage() {
     setIsLoading(true)
     setServerError(null)
     const result = await loginAction({ email: data.email, password: data.password, rememberMe: data.rememberMe })
-    if (result?.error) {
+    if (result && 'error' in result) {
       setServerError(result.error)
       setIsLoading(false)
+      return
     }
   }
 

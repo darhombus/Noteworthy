@@ -1,11 +1,11 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/server'
 import { hiddenScope } from '@/lib/data/scope'
 import { isVaultOpen } from '@/lib/privacy/vault'
 import StandaloneHiddenList, {
   type StandaloneHiddenEntry,
 } from '@/components/hidden/StandaloneHiddenList'
-import LiveDataRefresh from '@/components/LiveDataRefresh'
 
 interface RawEntryTag {
   entry_id: string
@@ -13,19 +13,17 @@ interface RawEntryTag {
 }
 
 export default async function StandaloneHiddenPage() {
+  const userId = await getCurrentUserId()
+  if (!userId) redirect('/login')
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
 
   // Vault must be open. If it isn't, bounce to /hidden where the user
   // either sets up a vault or unlocks an existing one. Same gate as the
   // /hidden/<jid> page so the standalone listing can never be reached
   // through a stale tab once the vault auto-locks.
-  if (!(await isVaultOpen(user.id))) redirect('/hidden')
+  if (!(await isVaultOpen(userId))) redirect('/hidden')
 
-  const scope = await hiddenScope(user.id)
+  const scope = await hiddenScope(userId)
   const standaloneEntries = await scope.entries.standalone()
 
   // Pull parent-journal title + color and entry tags in two parallel
@@ -82,7 +80,6 @@ export default async function StandaloneHiddenPage() {
 
   return (
     <>
-      <LiveDataRefresh />
       <StandaloneHiddenList entries={decorated} />
     </>
   )

@@ -48,10 +48,10 @@ export async function POST() {
       entryIds = (entries ?? []).map((e) => e.entry_id)
     }
 
-    // 3. Delete media storage objects for each entry
-    for (const entryId of entryIds) {
-      await deleteEntryMedia(entryId)
-    }
+    // 3. Delete media storage objects for each entry. Fire them all in
+    //    parallel — each call is its own Storage round-trip and they don't
+    //    depend on each other.
+    await Promise.all(entryIds.map((id) => deleteEntryMedia(id)))
 
     // 4. Delete avatar from Storage
     const { data: profile } = await admin

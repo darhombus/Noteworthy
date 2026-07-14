@@ -22,12 +22,25 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { isVaultOpen } from '@/lib/privacy/vault'
+import { timePerf } from '@/lib/perf/server'
+import { withHotCache } from '@/lib/perf/hot-cache'
 import type { Database } from '@/types/supabase'
 
 type Surface = 'public' | 'hidden'
 type Journal = Database['public']['Tables']['journals']['Row']
 type Entry = Database['public']['Tables']['entries']['Row']
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>
+// Keep a short-lived cache window so back-to-back route transitions reuse
+// data instead of re-querying on every click, while still refreshing quickly.
+const HOT_SCOPE_TTL_MS = 10000
+
+// `journals.list` is rebuilt rarely (user creates / edits / deletes a journal
+// occasionally) and is the most-visited list in the app. Its 10s window kept
+// expiring between actual sessions of use (logs showed cold ~250-420ms hits
+// after 50s gaps). Stretched to 30s; correctness is preserved because the
+// four journal write actions (create / update / delete / toggleFavourite)
+// explicitly clearHotCache the matching prefix after each write.
+const HOT_SCOPE_JOURNALS_LIST_TTL_MS = 30000
 
 export class VaultLockedError extends Error {
   constructor(message = 'Vault is locked') {
@@ -48,11 +61,6 @@ export interface Scope {
     byId: (id: string) => Promise<Entry | null>
     /** Hidden entries whose parent journal is public. Empty in publicScope. */
     standalone: () => Promise<Entry[]>
-    /** Every entry visible on this surface in a single query. The dashboard
-     *  composes its aggregations from this — listing per-journal would be
-     *  N+1. Hidden surface only callable behind an open vault (the scope
-     *  factory has already enforced that). */
-    listAll: () => Promise<Entry[]>
   }
 }
 
@@ -62,20 +70,54 @@ export interface Scope {
 
 export async function publicScope(userId: string): Promise<Scope> {
   const supabase = await createClient()
+  const keyBase = `scope:public:${userId}`
 
   return {
     surface: 'public',
     userId,
     journals: {
-      list: () => listJournalsBySurface(supabase, userId, 'public'),
-      byId: (id) => journalByIdInSurface(supabase, userId, id, 'public'),
+      list: () =>
+        timePerf(
+          'scope.public.journals.list',
+          () =>
+            withHotCache(`${keyBase}:journals.list`, HOT_SCOPE_JOURNALS_LIST_TTL_MS, () =>
+              listJournalsBySurface(supabase, userId, 'public'),
+            ),
+          { userId },
+        ),
+      byId: (id) =>
+        timePerf(
+          'scope.public.journals.byId',
+          () =>
+            withHotCache(`${keyBase}:journals.byId:${id}`, HOT_SCOPE_TTL_MS, () =>
+              journalByIdInSurface(supabase, userId, id, 'public'),
+            ),
+          { userId, id },
+        ),
     },
     entries: {
       listByJournal: (journalId) =>
-        listPublicEntriesInPublicJournal(supabase, userId, journalId),
-      byId: (id) => publicEntryById(supabase, userId, id),
+        timePerf(
+          'scope.public.entries.listByJournal',
+          () =>
+            withHotCache(`${keyBase}:entries.listByJournal:${journalId}`, HOT_SCOPE_TTL_MS, () =>
+              listPublicEntriesInPublicJournal(supabase, userId, journalId),
+            ),
+          { userId, journalId },
+        ),
+      byId: (id) =>
+        timePerf(
+          'scope.public.entries.byId',
+          () =>
+            withHotCache(`${keyBase}:entries.byId:${id}`, HOT_SCOPE_TTL_MS, () =>
+              publicEntryById(supabase, userId, id),
+            ),
+          {
+            userId,
+            id,
+          },
+        ),
       standalone: async () => [],
-      listAll: () => listAllPublicEntries(supabase, userId),
     },
   }
 }
@@ -85,22 +127,67 @@ export async function publicScope(userId: string): Promise<Scope> {
 // ---------------------------------------------------------------------------
 
 export async function hiddenScope(userId: string): Promise<Scope> {
-  if (!(await isVaultOpen(userId))) throw new VaultLockedError()
+  const vaultOpen = await timePerf('scope.hidden.vaultOpenCheck', () => isVaultOpen(userId), {
+    userId,
+  })
+  if (!vaultOpen) throw new VaultLockedError()
   const supabase = await createClient()
+  const keyBase = `scope:hidden:${userId}`
 
   return {
     surface: 'hidden',
     userId,
     journals: {
-      list: () => listJournalsBySurface(supabase, userId, 'hidden'),
-      byId: (id) => journalByIdInSurface(supabase, userId, id, 'hidden'),
+      list: () =>
+        timePerf(
+          'scope.hidden.journals.list',
+          () =>
+            withHotCache(`${keyBase}:journals.list`, HOT_SCOPE_JOURNALS_LIST_TTL_MS, () =>
+              listJournalsBySurface(supabase, userId, 'hidden'),
+            ),
+          { userId },
+        ),
+      byId: (id) =>
+        timePerf(
+          'scope.hidden.journals.byId',
+          () =>
+            withHotCache(`${keyBase}:journals.byId:${id}`, HOT_SCOPE_TTL_MS, () =>
+              journalByIdInSurface(supabase, userId, id, 'hidden'),
+            ),
+          { userId, id },
+        ),
     },
     entries: {
       listByJournal: (journalId) =>
-        listHiddenSurfaceEntriesInJournal(supabase, userId, journalId),
-      byId: (id) => hiddenEntryById(supabase, userId, id),
-      standalone: () => listStandaloneHiddenEntries(supabase, userId),
-      listAll: () => listAllHiddenEntries(supabase, userId),
+        timePerf(
+          'scope.hidden.entries.listByJournal',
+          () =>
+            withHotCache(`${keyBase}:entries.listByJournal:${journalId}`, HOT_SCOPE_TTL_MS, () =>
+              listHiddenSurfaceEntriesInJournal(supabase, userId, journalId),
+            ),
+          { userId, journalId },
+        ),
+      byId: (id) =>
+        timePerf(
+          'scope.hidden.entries.byId',
+          () =>
+            withHotCache(`${keyBase}:entries.byId:${id}`, HOT_SCOPE_TTL_MS, () =>
+              hiddenEntryById(supabase, userId, id),
+            ),
+          {
+            userId,
+            id,
+          },
+        ),
+      standalone: () =>
+        timePerf(
+          'scope.hidden.entries.standalone',
+          () =>
+            withHotCache(`${keyBase}:entries.standalone`, HOT_SCOPE_TTL_MS, () =>
+              listStandaloneHiddenEntries(supabase, userId),
+            ),
+          { userId },
+        ),
     },
   }
 }
@@ -150,22 +237,30 @@ async function listPublicEntriesInPublicJournal(
   userId: string,
   journalId: string,
 ): Promise<Entry[]> {
-  // Verify the journal is owned by the user, not deleted, and not hidden —
-  // a public entry inside a hidden journal still counts as hidden.
-  const journal = await journalByIdInSurface(supabase, userId, journalId, 'public')
-  if (!journal) return []
+  type EntryWithJournalFlags = Entry & {
+    journals: { user_id: string; is_hidden: boolean; deleted_at: string | null } | null
+  }
 
   const { data, error } = await supabase
     .from('entries')
-    .select('*')
+    .select(
+      'entry_id, journal_id, title, entry_date, word_count, created_at, updated_at, is_pinned, pinned_at, is_favorite, is_hidden, deleted_at, search_text, journals!inner(user_id, is_hidden, deleted_at)',
+    )
     .eq('journal_id', journalId)
     .eq('is_hidden', false)
     .is('deleted_at', null)
+    .eq('journals.user_id', userId)
+    .eq('journals.is_hidden', false)
+    .is('journals.deleted_at', null)
     .order('is_pinned', { ascending: false })
     .order('pinned_at', { ascending: false, nullsFirst: false })
     .order('updated_at', { ascending: false })
+    .returns<EntryWithJournalFlags[]>()
   if (error) throw error
-  return data ?? []
+  return (data ?? []).map(({ journals: _join, ...entry }) => {
+    void _join
+    return entry as Entry
+  })
 }
 
 async function publicEntryById(
@@ -206,35 +301,33 @@ async function listHiddenSurfaceEntriesInJournal(
   userId: string,
   journalId: string,
 ): Promise<Entry[]> {
-  // Fetch the journal without a hidden filter so we can decide which rule
-  // applies: a hidden journal exposes ALL its entries; a public journal
-  // exposes only the entries explicitly marked is_hidden = true.
-  const { data: journal, error: journalError } = await supabase
-    .from('journals')
-    .select('journal_id, is_hidden')
-    .eq('journal_id', journalId)
-    .eq('user_id', userId)
-    .is('deleted_at', null)
-    .maybeSingle()
-  if (journalError) throw journalError
-  if (!journal) return []
+  type EntryWithJournalFlags = Entry & {
+    journals: { user_id: string; is_hidden: boolean; deleted_at: string | null } | null
+  }
 
-  const query = supabase
+  // One query gets rows plus parent-journal visibility.
+  const { data, error } = await supabase
     .from('entries')
-    .select('*')
+    .select(
+      'entry_id, journal_id, title, entry_date, word_count, created_at, updated_at, is_pinned, pinned_at, is_favorite, is_hidden, deleted_at, search_text, journals!inner(user_id, is_hidden, deleted_at)',
+    )
     .eq('journal_id', journalId)
+    .eq('journals.user_id', userId)
+    .is('journals.deleted_at', null)
     .is('deleted_at', null)
     .order('is_pinned', { ascending: false })
     .order('pinned_at', { ascending: false, nullsFirst: false })
     .order('updated_at', { ascending: false })
-
-  // Belt-and-braces: even when the journal is hidden, the rule "this row
-  // should be visible to the hidden surface" must hold per row.
-  const filtered = journal.is_hidden ? query : query.eq('is_hidden', true)
-
-  const { data, error } = await filtered
+    .returns<EntryWithJournalFlags[]>()
   if (error) throw error
-  return data ?? []
+  const rows = data ?? []
+  if (!rows.length) return []
+  const journalHidden = rows[0]?.journals?.is_hidden ?? false
+  const visibleRows = journalHidden ? rows : rows.filter((r) => r.is_hidden)
+  return visibleRows.map(({ journals: _join, ...entry }) => {
+    void _join
+    return entry as Entry
+  })
 }
 
 async function hiddenEntryById(
@@ -267,80 +360,6 @@ async function hiddenEntryById(
   return entry as Entry
 }
 
-async function listAllPublicEntries(
-  supabase: SupabaseServer,
-  userId: string,
-): Promise<Entry[]> {
-  // One query that returns every entry visible on the public surface:
-  // entry.is_hidden=false AND parent journal owned by user, not deleted,
-  // not hidden. The inner-join + foreign-table filters mirror publicEntryById.
-  type EntryWithJournalFlags = Entry & {
-    journals: { user_id: string; is_hidden: boolean; deleted_at: string | null } | null
-  }
-
-  const { data, error } = await supabase
-    .from('entries')
-    .select('*, journals!inner(user_id, is_hidden, deleted_at)')
-    .eq('is_hidden', false)
-    .is('deleted_at', null)
-    .eq('journals.user_id', userId)
-    .eq('journals.is_hidden', false)
-    .is('journals.deleted_at', null)
-    .returns<EntryWithJournalFlags[]>()
-  if (error) throw error
-  return (data ?? []).map(({ journals: _join, ...entry }) => {
-    void _join
-    return entry as Entry
-  })
-}
-
-async function listAllHiddenEntries(
-  supabase: SupabaseServer,
-  userId: string,
-): Promise<Entry[]> {
-  // Hidden surface visibility = entry.is_hidden=true OR parent journal
-  // is_hidden=true. PostgREST can't combine an entry-level OR with a
-  // foreign-table predicate, so we run two queries and merge in code.
-  type EntryWithJournalFlags = Entry & {
-    journals: { user_id: string; is_hidden: boolean; deleted_at: string | null } | null
-  }
-
-  const baseSelect = '*, journals!inner(user_id, is_hidden, deleted_at)'
-
-  const [byEntryFlag, byJournalFlag] = await Promise.all([
-    supabase
-      .from('entries')
-      .select(baseSelect)
-      .eq('is_hidden', true)
-      .is('deleted_at', null)
-      .eq('journals.user_id', userId)
-      .is('journals.deleted_at', null)
-      .returns<EntryWithJournalFlags[]>(),
-    supabase
-      .from('entries')
-      .select(baseSelect)
-      .eq('is_hidden', false)
-      .is('deleted_at', null)
-      .eq('journals.user_id', userId)
-      .eq('journals.is_hidden', true)
-      .is('journals.deleted_at', null)
-      .returns<EntryWithJournalFlags[]>(),
-  ])
-  if (byEntryFlag.error) throw byEntryFlag.error
-  if (byJournalFlag.error) throw byJournalFlag.error
-
-  const seen = new Set<string>()
-  const out: Entry[] = []
-  for (const row of [...(byEntryFlag.data ?? []), ...(byJournalFlag.data ?? [])]) {
-    if (seen.has(row.entry_id)) continue
-    seen.add(row.entry_id)
-    const { journals: _join, ...entry } = row
-    void _join
-    out.push(entry as Entry)
-  }
-  return out
-}
-
 async function listStandaloneHiddenEntries(
   supabase: SupabaseServer,
   userId: string,
@@ -351,7 +370,9 @@ async function listStandaloneHiddenEntries(
 
   const { data, error } = await supabase
     .from('entries')
-    .select('*, journals!inner(user_id, is_hidden, deleted_at)')
+    .select(
+      'entry_id, journal_id, title, entry_date, word_count, created_at, updated_at, is_pinned, pinned_at, is_favorite, is_hidden, deleted_at, search_text, journals!inner(user_id, is_hidden, deleted_at)',
+    )
     .eq('is_hidden', true)
     .is('deleted_at', null)
     .eq('journals.user_id', userId)

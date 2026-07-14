@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useTransition } from 'react'
 import {
   LayoutDashboard,
   BookOpen,
@@ -17,8 +17,10 @@ import {
 import { useUIStore } from '@/store/useUIStore'
 import ThemeToggle from './ThemeToggle'
 import { signOutAction } from '@/lib/actions/auth'
+import { createClient } from '@/lib/supabase/client'
 
 export interface SidebarUser {
+  id: string
   fullName: string
   email: string
   avatarUrl: string | null
@@ -38,6 +40,8 @@ const NAV_ITEMS = [
   { href: '/settings',    label: 'Settings',     Icon: Settings },
 ] as const
 
+const HEAVY_ROUTE_PREFETCH = ['/analytics', '/tags', '/hidden'] as const
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/)
   if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? '?'
@@ -48,20 +52,77 @@ export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [, startTransition] = useTransition()
-  const { sidebarOpen, setSidebarOpen, profileName, profileAvatarUrl, setProfileName, setProfileAvatarUrl } = useUIStore()
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set())
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    profileUserId,
+    profileName,
+    profileAvatarUrl,
+    setProfile,
+    clearProfile,
+  } = useUIStore()
 
-  // Initialise Zustand profile state from server props on first mount
+  const prefetchRoute = useCallback((href: string) => {
+    if (prefetchedRoutesRef.current.has(href)) return
+    prefetchedRoutesRef.current.add(href)
+    router.prefetch(href)
+  }, [router])
+
+  // Warm likely-heavy destinations shortly after mount/route changes so
+  // click navigation doesn't need to cold-fetch these pages.
   useEffect(() => {
-    setProfileName(user.fullName)
-    setProfileAvatarUrl(user.avatarUrl)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    const id = window.setTimeout(() => {
+      for (const href of HEAVY_ROUTE_PREFETCH) {
+        const isCurrent = pathname === href || pathname.startsWith(`${href}/`)
+        if (!isCurrent) prefetchRoute(href)
+      }
+    }, 250)
+    return () => window.clearTimeout(id)
+  }, [pathname, prefetchRoute])
 
-  // profileName starts as '' (uninitialized) — fall back to prop until mounted
-  const displayName = profileName || user.fullName
-  // profileAvatarUrl starts as null; we can't distinguish "no avatar" from "uninitialized"
-  // so fall back to the server prop whenever the store still holds the initial empty name
-  const displayAvatar = profileName ? profileAvatarUrl : user.avatarUrl
+  // Reset profile snapshot on user/context change so no stale value can flash.
+  useEffect(() => {
+    clearProfile()
+  }, [clearProfile, user.id])
+
+  // Hydrate profile details client-side so route navigation is not blocked by
+  // a server-side layout profile query on every page transition.
+  useEffect(() => {
+    let cancelled = false
+
+    async function hydrateProfile() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (cancelled || !data) return
+
+      const hydratedName =
+        typeof data.full_name === 'string' && data.full_name.trim().length > 0
+          ? data.full_name
+          : ''
+
+      setProfile({
+        userId: user.id,
+        name: hydratedName,
+        avatarUrl: data.avatar_url ?? null,
+      })
+    }
+
+    void hydrateProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [setProfile, user.id])
+
+  const hasHydratedProfile = profileUserId === user.id
+  const displayName = hasHydratedProfile && profileName ? profileName : 'User'
+  const displayAvatar = hasHydratedProfile ? profileAvatarUrl : null
 
   function handleSignOut() {
     startTransition(async () => {
@@ -119,6 +180,9 @@ export default function Sidebar({ user }: SidebarProps) {
             <li key={href}>
               <Link
                 href={href}
+                onMouseEnter={() => prefetchRoute(href)}
+                onFocus={() => prefetchRoute(href)}
+                onTouchStart={() => prefetchRoute(href)}
                 className={`relative flex items-center gap-3 px-3 py-2.5 pr-8 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                   isActive
                     ? 'sidebar-nav-active bg-[#1976D2] dark:bg-[#1E3A5F] text-white font-semibold'
@@ -200,6 +264,9 @@ export default function Sidebar({ user }: SidebarProps) {
                 <li key={href}>
                   <Link
                     href={href}
+                    onMouseEnter={() => prefetchRoute(href)}
+                    onFocus={() => prefetchRoute(href)}
+                    onTouchStart={() => prefetchRoute(href)}
                     title={label}
                     className={`relative flex items-center gap-3 px-2 lg:px-3 lg:pr-8 py-2.5 rounded-xl text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-[#1976D2] dark:focus-visible:ring-[#1976D2] focus-visible:outline-none ${
                       isActive

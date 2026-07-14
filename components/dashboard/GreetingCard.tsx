@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { Clock } from 'lucide-react'
+import { useUIStore } from '@/store/useUIStore'
 
 interface GreetingCardProps {
+  userId: string
   fullName: string
   lastEntryAt: string | null // ISO timestamp
 }
@@ -39,23 +40,22 @@ function formatRelative(isoString: string): string {
   return `${days}d ago`
 }
 
-export default function GreetingCard({ fullName, lastEntryAt }: GreetingCardProps) {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  // Render a same-size placeholder on the server to avoid layout shift
-  if (!mounted) {
-    return <div className="bg-[#1976D2] rounded-xl p-6 min-h-[88px]" aria-hidden />
-  }
+export default function GreetingCard({ userId, fullName, lastEntryAt }: GreetingCardProps) {
+  const serverName = typeof fullName === 'string' ? fullName.trim() : ''
+  const profileUserId = useUIStore((s) => s.profileUserId)
+  const profileName = useUIStore((s) => s.profileName)
+  const hasHydratedProfile = profileUserId === userId
+  const hydratedName =
+    hasHydratedProfile && typeof profileName === 'string' && profileName.trim().length > 0
+      ? profileName.trim()
+      : ''
+  const displayName = hydratedName || serverName
 
   return (
     <div className="bg-[#1976D2] rounded-xl p-6 text-white">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold leading-tight">{getGreeting(fullName)}</h1>
+          <h1 className="text-2xl font-bold leading-tight">{getGreeting(displayName)}</h1>
           <p className="text-sm text-white/70 mt-1">{formatDate()}</p>
         </div>
 

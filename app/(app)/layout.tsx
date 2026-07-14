@@ -1,26 +1,29 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/auth/server'
+import { getPerfTraceId, timePerf } from '@/lib/perf/server'
 import AppShell from '@/components/layout/AppShell'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const trace = await getPerfTraceId()
+  return timePerf(
+    'layout.app.render',
+    async () => {
+      const user = await getCurrentUser()
+      if (!user) redirect('/login')
+      const fullName =
+        typeof user.fullName === 'string' && user.fullName.trim().length > 0
+          ? user.fullName.trim()
+          : 'User'
 
-  if (!user) redirect('/login')
+      const sidebarUser = {
+        id: user.id,
+        fullName,
+        email: user.email ?? '',
+        avatarUrl: null,
+      }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, avatar_url')
-    .eq('user_id', user.id)
-    .single()
-
-  const sidebarUser = {
-    fullName: profile?.full_name ?? user.email?.split('@')[0] ?? 'User',
-    email: user.email ?? '',
-    avatarUrl: profile?.avatar_url ?? null,
-  }
-
-  return <AppShell user={sidebarUser}>{children}</AppShell>
+      return <AppShell user={sidebarUser}>{children}</AppShell>
+    },
+    { trace },
+  )
 }

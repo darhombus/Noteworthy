@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUserId } from '@/lib/auth/server'
 import { hiddenScope } from '@/lib/data/scope'
 import { isVaultOpen } from '@/lib/privacy/vault'
 import EntryEditor from '@/components/entries/EntryEditor'
@@ -15,29 +16,26 @@ interface RawEntryTag {
 
 export default async function HiddenEntryPage({ params }: EntryPageProps) {
   const { journalId, entryId } = await params
+  const userId = await getCurrentUserId()
+  if (!userId) redirect('/login')
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
 
-  if (!(await isVaultOpen(user.id))) redirect('/hidden')
+  if (!(await isVaultOpen(userId))) redirect('/hidden')
 
-  const scope = await hiddenScope(user.id)
-  const [entry, journal] = await Promise.all([
+  const scope = await hiddenScope(userId)
+  const [entry, journal, rawEntryTagsResult] = await Promise.all([
     scope.entries.byId(entryId),
     scope.journals.byId(journalId),
+    supabase
+      .from('entry_tags')
+      .select('tags(tag_id, tag_name, color)')
+      .eq('entry_id', entryId),
   ])
 
   if (!entry || !journal) notFound()
   if (entry.journal_id !== journal.journal_id) notFound()
 
-  const { data: rawEntryTags } = await supabase
-    .from('entry_tags')
-    .select('tags(tag_id, tag_name, color)')
-    .eq('entry_id', entryId)
-
-  const initialTags = ((rawEntryTags ?? []) as unknown as RawEntryTag[])
+  const initialTags = ((rawEntryTagsResult.data ?? []) as unknown as RawEntryTag[])
     .map((et) => et.tags)
     .filter((t): t is { tag_id: string; tag_name: string; color: string } => t !== null)
 

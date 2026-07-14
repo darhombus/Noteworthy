@@ -3,6 +3,16 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { clearHotCache } from '@/lib/perf/hot-cache'
+
+/** Drop scope.journals.{list,byId} hot-cache entries for both surfaces.
+ *  Called after every journal write so the 30s journals.list TTL never
+ *  hides a fresh edit. Prefix covers both `journals.list` and
+ *  `journals.byId:<uuid>` keys under either surface. */
+function clearJournalScopeCaches(userId: string): void {
+  clearHotCache(`scope:public:${userId}:journals`)
+  clearHotCache(`scope:hidden:${userId}:journals`)
+}
 import {
   createJournalSchema,
   updateJournalSchema,
@@ -49,6 +59,7 @@ export async function createJournal(
 
   if (error) return { error: error.message }
 
+  clearJournalScopeCaches(user.id)
   revalidatePath('/journals')
   revalidatePath('/hidden')
   return { journal }
@@ -86,6 +97,7 @@ export async function updateJournal(
 
   if (error) return { error: error.message }
 
+  clearJournalScopeCaches(user.id)
   revalidatePath('/journals')
   revalidatePath('/hidden')
   return { journal }
@@ -120,6 +132,12 @@ export async function deleteJournal(
     .eq('user_id', user.id)
   if (error) return { error: error.message }
 
+  // Cascade-deleting the journal also cascade-deletes its entries server-
+  // side, so any cached entry rows / lists for this user are stale too.
+  // Cheaper to wipe the whole scope prefix for this user than to enumerate
+  // every affected key.
+  clearHotCache(`scope:public:${user.id}`)
+  clearHotCache(`scope:hidden:${user.id}`)
   revalidatePath('/journals')
   revalidatePath('/hidden')
   // The cascade above moved every entry in the journal out of the public
@@ -151,6 +169,7 @@ export async function toggleFavourite(
 
   if (error) return { error: error.message }
 
+  clearJournalScopeCaches(user.id)
   revalidatePath('/journals')
   revalidatePath('/hidden')
   return { success: true }

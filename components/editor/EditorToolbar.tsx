@@ -48,7 +48,7 @@ interface FontOption {
   value: string
 }
 
-// All Google Fonts referenced below are already preloaded via next/font in
+// Google Fonts referenced below are provided via next/font in
 // `app/layout.tsx` — we reference them through their CSS variables so the
 // hashed font-family names injected by next/font stay resolvable.
 const FONT_OPTIONS: FontOption[] = [
@@ -56,14 +56,8 @@ const FONT_OPTIONS: FontOption[] = [
   { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
   { label: 'Lora', value: 'var(--font-lora), Georgia, serif' },
   { label: 'Merriweather', value: 'var(--font-merriweather), Georgia, serif' },
-  { label: 'Playfair Display', value: 'var(--font-playfair), Georgia, serif' },
-  { label: 'EB Garamond', value: 'var(--font-garamond), Georgia, serif' },
-  { label: 'Libre Baskerville', value: 'var(--font-baskerville), Georgia, serif' },
   { label: 'Inter', value: 'var(--font-inter), system-ui, sans-serif' },
   { label: 'Roboto', value: 'var(--font-roboto), Arial, sans-serif' },
-  { label: 'Open Sans', value: 'var(--font-open-sans), Arial, sans-serif' },
-  { label: 'Lato', value: 'var(--font-lato), Arial, sans-serif' },
-  { label: 'Montserrat', value: 'var(--font-montserrat), Arial, sans-serif' },
   { label: 'Dancing Script', value: 'var(--font-dancing), cursive' },
 ]
 

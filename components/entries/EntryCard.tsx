@@ -11,7 +11,6 @@ import { hideEntry, unhideEntry } from '@/lib/actions/vault'
 import { useSurface } from '@/lib/surface'
 import { entryHref } from '@/lib/utils/href'
 import type { Database } from '@/types/supabase'
-import { extractPlainText, type RichTextNode } from '@/lib/utils/extractPlainText'
 import TagChip from '@/components/ui/TagChip'
 import IndividuallyHiddenIndicator from '@/components/hidden/IndividuallyHiddenIndicator'
 
@@ -202,22 +201,16 @@ export default function EntryCard({
     year: 'numeric',
   }).format(new Date(`${entry.entry_date}T00:00:00`))
 
-  // Plain-text preview snippet derived from the stored entry content.
+  // Plain-text preview snippet derived from the generated `search_text`
+  // column. This avoids shipping the full rich `content` JSON in list
+  // queries just to render a one-line preview.
   const previewSnippet = (() => {
-    const raw = entry.content
-    if (raw == null) return ''
-    let text = ''
-    if (typeof raw === 'string') {
-      text = raw
-    } else if (typeof raw === 'object') {
-      try {
-        text = extractPlainText(raw as RichTextNode)
-      } catch {
-        text = ''
-      }
-    }
-    if (!text) return ''
-    return text.length > 110 ? text.slice(0, 110) + '…' : text
+    const raw = entry.search_text ?? ''
+    if (!raw) return ''
+    const titlePrefix = `${entry.title ?? ''} `
+    const body = raw.startsWith(titlePrefix) ? raw.slice(titlePrefix.length) : raw
+    if (!body) return ''
+    return body.length > 110 ? body.slice(0, 110) + '…' : body
   })()
 
   const visibleTags = tags.slice(0, 3)
