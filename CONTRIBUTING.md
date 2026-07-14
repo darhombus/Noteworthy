@@ -65,3 +65,16 @@ so all three tiers stay in sync.
   write a new migration instead.
 - Schema changes reach the hosted database only via `supabase db push` (run by
   CI on merge to `main`) — not through Studio.
+
+## Continuous integration
+
+Two GitHub Actions workflows back the branch model:
+
+- **`ci.yml`** runs on every pull request into `dev`, `staging`, or `main`:
+  `npm run lint`, `npx tsc --noEmit`, and `npm run build` (with dummy
+  `NEXT_PUBLIC_*` values — no real secrets needed). On `staging` and `main`
+  this check is required to pass before a PR can merge.
+- **`deploy-migrations.yml`** runs when a push to `main` touches
+  `supabase/migrations/**`, and runs `supabase db push` against the hosted
+  project. It's idempotent, so re-runs are safe.
+
