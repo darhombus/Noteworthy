@@ -37,6 +37,8 @@ devserver.err.log
 
 # env files (can opt-in for committing if needed)
 .env*
+# …but the committed template is opted back in:
+!.env.example
 
 # vercel
 .vercel
