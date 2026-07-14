@@ -1,0 +1,35 @@
+name: CI
+
+# Checks on every PR targeting a long-lived branch. Runs without any real
+# secrets: the build gets dummy NEXT_PUBLIC_* values.
+on:
+  pull_request:
+    branches: [dev, staging, main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy public values — the Next.js build only needs these to exist,
+          # not to be real. No server secrets are required at build time.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder_ci
