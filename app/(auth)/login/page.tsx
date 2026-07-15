@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { Eye, EyeOff, BookOpen } from 'lucide-react'
 import { loginAction } from '@/lib/actions/auth'
 import { loginSchema, type LoginFormData } from '@/lib/validations/auth'
-import ThemeToggle from '@/components/layout/ThemeToggle'
 
 export default function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null)
@@ -36,11 +35,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
-      <div className="absolute top-3 right-3">
-        <ThemeToggle />
-      </div>
-
+    <main className="min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
       <div className="w-full flex justify-center">
         <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-8 py-8 flex flex-col items-center">
 

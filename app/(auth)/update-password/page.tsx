@@ -8,7 +8,6 @@ import { toast } from 'sonner'
 import { BookOpen } from 'lucide-react'
 import { updatePasswordAction } from '@/lib/actions/auth'
 import { updatePasswordSchema, type UpdatePasswordFormData } from '@/lib/validations/auth'
-import ThemeToggle from '@/components/layout/ThemeToggle'
 
 export default function UpdatePasswordPage() {
   const [serverError, setServerError] = useState<string | null>(null)
@@ -38,10 +37,6 @@ export default function UpdatePasswordPage() {
 
   return (
     <main className="min-h-screen bg-[var(--bg-page)] flex flex-col">
-      <header className="flex justify-end p-4">
-        <ThemeToggle />
-      </header>
-
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-10 py-10 flex flex-col items-center">
 
