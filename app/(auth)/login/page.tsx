@@ -21,6 +21,7 @@ export default function LoginPage() {
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { rememberMe: false },
+    mode: 'onTouched',
   })
 
   const onSubmit = async (data: LoginFormData) => {

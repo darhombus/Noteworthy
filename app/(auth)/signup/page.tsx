@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Eye, EyeOff } from 'lucide-react'
 import { signUpAction } from '@/lib/actions/auth'
 import { signupSchema, type SignupFormData } from '@/lib/validations/auth'
 import ThemeToggle from '@/components/layout/ThemeToggle'
@@ -30,6 +30,7 @@ const strengthTextColor = {
 export default function SignupPage() {
   const [serverError, setServerError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const {
     register,
@@ -38,6 +39,7 @@ export default function SignupPage() {
     formState: { errors },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
+    mode: 'onTouched',
   })
 
   const password = watch('password', '')
@@ -114,13 +116,23 @@ export default function SignupPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-[#BDBDBD] mb-1.5">
                 Password
               </label>
-              <input
-                {...register('password')}
-                type="password"
-                placeholder="Min. 8 characters"
-                autoComplete="new-password"
-                className="w-full px-3.5 py-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
-              />
+              <div className="relative">
+                <input
+                  {...register('password')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min. 8 characters"
+                  autoComplete="new-password"
+                  className="w-full px-3.5 py-2.5 pr-10 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-gray-900 dark:text-white text-sm placeholder:text-gray-400 focus:outline-none focus:border-[#1976D2] dark:focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] dark:focus:ring-[#1976D2] transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-[var(--text-secondary)] hover:text-gray-700 dark:hover:text-white transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               {password && strength && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-[#E0E0E0] dark:bg-[#333333] rounded-full overflow-hidden">
