@@ -7,7 +7,6 @@ import Link from 'next/link'
 import { BookOpen, Eye, EyeOff } from 'lucide-react'
 import { signUpAction } from '@/lib/actions/auth'
 import { signupSchema, type SignupFormData } from '@/lib/validations/auth'
-import ThemeToggle from '@/components/layout/ThemeToggle'
 
 function getPasswordStrength(password: string): {
   label: 'Weak' | 'Medium' | 'Strong'
@@ -56,11 +55,7 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
-      <div className="absolute top-3 right-3">
-        <ThemeToggle />
-      </div>
-
+    <main className="min-h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 py-6">
       <div className="w-full flex justify-center">
         <div className="w-full max-w-[420px] bg-[var(--bg-surface)] rounded-2xl shadow-md border border-[var(--border)] px-8 py-6 flex flex-col items-center">
 
