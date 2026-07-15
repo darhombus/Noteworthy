@@ -1,14 +1,9 @@
 import Link from 'next/link'
 import { BookOpen } from 'lucide-react'
-import ThemeToggle from '@/components/layout/ThemeToggle'
 
 export default function LandingPage() {
   return (
     <main className="h-screen bg-[var(--bg-page)] flex items-center justify-center px-4 overflow-hidden">
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
-
       <div className="flex flex-col items-center text-center max-w-sm w-full">
 
           {/* Logo */}
