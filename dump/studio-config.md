@@ -24,6 +24,10 @@ Captured by: Ferrin
 https://noteworthy-alpha.vercel.app
 ```
 
+Section 6 note: not reproduced on Frankfurt. This value points at a Next
+deployment that goes dark under EXT-8. Placeholder set; the real Site URL
+is set in Phase 1 once the SvelteKit Vercel project exists.
+
 ---
 
 ## A2 — Redirect allowlist
@@ -39,11 +43,10 @@ https://noteworthy-dev.vercel.app/**
 
 Count: 2
 
-Structure note: the Site URL (`noteworthy-alpha.vercel.app`) has no
-corresponding entry in this list. Supabase implicitly permits the Site URL
-itself, so production redirects worked without one. Recorded so Phase 1 knows
-the shape was two environment entries plus an implicitly-covered production,
-not three entries with one missing.
+Section 6 note: not reproduced on Frankfurt. Redirect list left empty;
+Ireland's entries point at Next deployments that go dark under EXT-8.
+Phase 1 recreates this shape against the SvelteKit deployments — two
+environment entries with /** wildcards, production via Site URL alone.
 
 ---
 
@@ -69,6 +72,10 @@ All other providers are not toggled on
 
 For each: subject line and full body. If untouched, write
 **"unmodified from Supabase default"** — do not leave blank.
+
+Section 6 note: Frankfurt gates template editing behind custom SMTP.
+Not reproduced — Ireland's templates were unmodified defaults, so
+Frankfurt's defaults already match. No divergence.
 
 ### Confirm signup
 Subject:
@@ -261,9 +268,11 @@ design (EXT-18) and these cannot be reconstructed after the pause.
 - Old Postgres version: 17.6
 - Pause date (fill at B7):27/08/2026
 - Restore deadline (pause + 1 year, EXT-11):27/08/2027
-- New project ref (fill at Section 6):
+- New project ref (fill at Section 6):nytuhulqwoqwfqrstikc
 - New project region: `eu-central-1` (Frankfurt)
-- New Postgres version (must be 17, EXT-14):
+- New Postgres version (must be 17, EXT-14):17.6.1.166
+- New project Key ID / `kid`: 32fee8d5-4f89-4ab2-b84e-5ef66f9d077f
+- New project JWKS URL: https://nytuhulqwoqwfqrstikc.supabase.co/auth/v1/.well-known/jwks.json
 
 ---
 
