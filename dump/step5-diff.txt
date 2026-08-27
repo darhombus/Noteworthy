@@ -1,0 +1,27 @@
+diff --git a/dump/live-schema.sql b/dump/frankfurt-schema.sql
+index 461531b..4c52039 100644
+--- a/dump/live-schema.sql
++++ b/dump/frankfurt-schema.sql
+@@ -116,6 +116,11 @@ CREATE OR REPLACE FUNCTION "public"."fn_compute_word_count"("content" "jsonb") R
+ DECLARE
+   raw_text TEXT;
+ BEGIN
++  -- Use strict mode + silent=true so structural errors on non-objects are
++  -- suppressed without triggering lax mode's array auto-unwrapping.
++  -- The filter ? (@.type == "text") targets only Tiptap text nodes, so each
++  -- text node is visited exactly once (no doubling from array + element).
++  -- val #>> '{}' extracts the bare string value without JSON quotes.
+   SELECT string_agg(val #>> '{}', ' ')
+   INTO raw_text
+   FROM jsonb_path_query(
+@@ -1220,10 +1225,6 @@ CREATE POLICY "tags: update own" ON "public"."tags" FOR UPDATE TO "authenticated
+ ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+ 
+ 
+-
+-
+-
+-
+ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."entries";
+ 
+ 
