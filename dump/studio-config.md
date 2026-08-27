@@ -259,8 +259,8 @@ design (EXT-18) and these cannot be reconstructed after the pause.
 - Old project ref: `ahkixdhyhghzxhkqmazy`
 - Old project region: `eu-west-1` (Ireland)
 - Old Postgres version: 17.6
-- Pause date (fill at B7):
-- Restore deadline (pause + 1 year, EXT-11):
+- Pause date (fill at B7):27/08/2026
+- Restore deadline (pause + 1 year, EXT-11):27/08/2027
 - New project ref (fill at Section 6):
 - New project region: `eu-central-1` (Frankfurt)
 - New Postgres version (must be 17, EXT-14):
