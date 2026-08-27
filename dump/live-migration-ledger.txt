@@ -1,0 +1,85 @@
+Phase EXT Section 2 Step A - remote migration ledger
+Project: Noteworthy (ahkixdhyhghzxhkqmazy), eu-west-1, Postgres 17.6.1.063
+Captured: 2026-08-26T12:05:55Z
+
+Instrument 2 - direct SELECT (connection string redacted):
+  psql -h aws-1-eu-west-1.pooler.supabase.com -p 5432 \
+       -U postgres.ahkixdhyhghzxhkqmazy -d postgres -At \
+       -c "select version from supabase_migrations.schema_migrations order by version;"
+
+Applied versions on remote (34):
+  000
+  001
+  002
+  003
+  004
+  005
+  006
+  007
+  008
+  009
+  010
+  011
+  012
+  013
+  014
+  015
+  016
+  017
+  018
+  019
+  020
+  021
+  022
+  023
+  024
+  025
+  026
+  027
+  028
+  029
+  030
+  20260714145121
+  20260714221505
+  20260714222608
+
+Migration files on disk (34):
+  000_enable_extensions.sql
+  001_initial_schema.sql
+  002_search_function.sql
+  003_improved_search.sql
+  004_enforce_tiptap_doc_shape.sql
+  005_media_image_upload.sql
+  006_media_orphan_cleanup.sql
+  007_video_upload.sql
+  008_shared_entry_lock.sql
+  009_enable_entries_realtime.sql
+  010_enable_live_data_realtime.sql
+  011_hidden_privacy_vault.sql
+  012_search_exclude_hidden.sql
+  013_search_include_hidden_scoped.sql
+  014_hidden_vault_rebuild.sql
+  015_search_entries_is_pinned.sql
+  016_search_entries_plain_text.sql
+  017_search_performance.sql
+  018_remove_journal_entry_locks.sql
+  019_search_prefix_matching.sql
+  020_search_materialized_text.sql
+  021_search_entries_one_round_trip.sql
+  022_search_index_rpc.sql
+  023_tags_usage_excludes_hidden.sql
+  024_entry_favourite_and_scoped_updated_at.sql
+  025_entry_pinned_at.sql
+  026_search_index_entries_is_favorite.sql
+  027_search_index_entries_is_hidden.sql
+  028_rls_initplan_optimization.sql
+  029_dashboard_snapshot_rpc.sql
+  030_drop_duplicate_journal_indexes.sql
+  20260714145121_grant_public_api_access.sql
+  20260714221505_retrofit_verification_comment.sql
+  20260714222608_revert_verification_comment.sql
+
+COMPARISON
+  remote-only (applied, no file on disk): none
+  local-only  (file on disk, not applied): none
+  ordering mismatch: none - ledger order equals lexicographic filename sort
